@@ -1,0 +1,179 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`prompt characterization (pre-migration lock) > appstore developer-less name has no developer suffix > system 1`] = `
+"You are an ASO expert for App Store.
+You write an optimized listing in the language "en-US" for the app "Solo".
+ABSOLUTE RULE: use the provided keywords STRICTLY as given (identical spelling and form, case may be adapted), do not translate them: they are already in the target language. Do not invent new keywords in the title and short fields.
+Make sure the strongest keywords (those at the top of the list) all appear in the "description", woven naturally into paragraphs and bullet lists.
+FORBIDDEN: no markdown (no ###, no **, no _). Stores display plain text: paragraphs separated by blank lines, lists with simple dashes "- " or bullets "• ".
+Prioritize the first keywords in the list (the strongest) in the title and short fields.
+Respond ONLY in JSON with exactly these keys:
+- "title": App Store title (max 30 characters)
+- "subtitle": subtitle (max 30 characters)
+- "description": full description (max 4000 characters, paragraphs + bullet lists)
+- "keywords": App Store keywords field (max 100 characters, comma-separated words WITHOUT spaces, taken from the provided keyword list exactly as given (already in "en-US"), without repeating words used in the title or subtitle)"
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_caption_screenshots > system 1`] = `"You are an ASO copywriter. You are shown 2 screenshot(s) of the app "Photo Editor Pro", in order. For EACH image, write a short marketing caption (2 to 6 words) describing the benefit visible on screen, in "en-US". Respond ONLY in JSON: { "captions": string[] } with exactly 2 elements, in the same order as the images."`;
+
+exports[`prompt characterization (pre-migration lock) > aso_caption_screenshots > user 1`] = `"Write 2 caption(s), one per image, in order."`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_copy > system 1`] = `"You are an ASO (App Store Optimization) expert for App Store. You write listings optimized for search ranking and conversion, respecting the stores' character limits. Output language: fr-FR. Respond ONLY in JSON with the exact keys: title (<= 30 characters), subtitle (<= 30 characters), promotionalText (<= 170 characters), description (long persuasive text), keywords (array of about 20 relevant keywords, without duplicates)."`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_copy > user 1`] = `
+"App: Photo Editor Pro
+Developer: Acme Labs
+Categories: Photo & Video, Productivity
+
+Current description:
+Crop, filter and retouch your photos in seconds.
+
+Generate a new optimized ASO listing."
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_listing_appstore (no privacy) > system 1`] = `
+"You are an ASO expert for App Store.
+You write an optimized listing in the language "fr-FR" for the app "Photo Editor Pro" (developer: Acme Labs).
+ABSOLUTE RULE: use the provided keywords STRICTLY as given (identical spelling and form, case may be adapted), do not translate them: they are already in the target language. Do not invent new keywords in the title and short fields.
+Make sure the strongest keywords (those at the top of the list) all appear in the "description", woven naturally into paragraphs and bullet lists.
+FORBIDDEN: no markdown (no ###, no **, no _). Stores display plain text: paragraphs separated by blank lines, lists with simple dashes "- " or bullets "• ".
+Prioritize the first keywords in the list (the strongest) in the title and short fields.
+Respond ONLY in JSON with exactly these keys:
+- "title": App Store title (max 30 characters)
+- "subtitle": subtitle (max 30 characters)
+- "description": full description (max 4000 characters, paragraphs + bullet lists)
+- "keywords": App Store keywords field (max 100 characters, comma-separated words WITHOUT spaces, taken from the provided keyword list exactly as given (already in "fr-FR"), without repeating words used in the title or subtitle)"
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_listing_appstore (no privacy) > user 1`] = `
+"Keywords to use (order = decreasing importance):
+1. photo editor
+2. filters
+
+Generate the App Store listing in "fr-FR"."
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_listing_appstore (with privacy) > system 1`] = `
+"You are an ASO expert for App Store.
+You write an optimized listing in the language "fr-FR" for the app "Photo Editor Pro" (developer: Acme Labs).
+ABSOLUTE RULE: use the provided keywords STRICTLY as given (identical spelling and form, case may be adapted), do not translate them: they are already in the target language. Do not invent new keywords in the title and short fields.
+Make sure the strongest keywords (those at the top of the list) all appear in the "description", woven naturally into paragraphs and bullet lists.
+FORBIDDEN: no markdown (no ###, no **, no _). Stores display plain text: paragraphs separated by blank lines, lists with simple dashes "- " or bullets "• ".
+Do NOT add a privacy policy link or line in "description": the code automatically appends a final line "label: URL". Provide only the translated label in "privacyLabel".
+Prioritize the first keywords in the list (the strongest) in the title and short fields.
+Respond ONLY in JSON with exactly these keys:
+- "title": App Store title (max 30 characters)
+- "subtitle": subtitle (max 30 characters)
+- "description": full description (max 4000 characters, paragraphs + bullet lists)
+- "keywords": App Store keywords field (max 100 characters, comma-separated words WITHOUT spaces, taken from the provided keyword list exactly as given (already in "fr-FR"), without repeating words used in the title or subtitle)
+- "privacyLabel": short label translated into "fr-FR" for the privacy policy (e.g. "Privacy Policy", "Politique de confidentialité"), WITHOUT the URL or the colon"
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_listing_appstore (with privacy) > user 1`] = `
+"Keywords to use (order = decreasing importance):
+1. photo editor
+2. filters
+
+Generate the App Store listing in "fr-FR"."
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_listing_playstore (no privacy) > system 1`] = `
+"You are an ASO expert for Google Play.
+You write an optimized listing in the language "fr-FR" for the app "Photo Editor Pro" (developer: Acme Labs).
+ABSOLUTE RULE: use the provided keywords STRICTLY as given (identical spelling and form, case may be adapted), do not translate them: they are already in the target language. Do not invent new keywords in the title and short fields.
+Make sure the strongest keywords (those at the top of the list) all appear in the "description", woven naturally into paragraphs and bullet lists.
+The "description" must be between 3000 and 4000 characters: Google Play indexes it for search, a short description wastes ranking surface.
+FORBIDDEN: no markdown (no ###, no **, no _). Stores display plain text: paragraphs separated by blank lines, lists with simple dashes "- " or bullets "• ".
+Prioritize the first keywords in the list (the strongest) in the title and short fields.
+Respond ONLY in JSON with exactly these keys:
+- "title": Google Play title (max 30 characters)
+- "shortDescription": short description (max 80 characters)
+- "description": long description, between 3000 and 4000 characters (paragraphs + bullet lists)"
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_listing_playstore (no privacy) > user 1`] = `
+"Keywords to use (order = decreasing importance):
+1. photo editor
+2. filters
+
+Generate the Google Play listing in "fr-FR"."
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_listing_playstore (with privacy) > system 1`] = `
+"You are an ASO expert for Google Play.
+You write an optimized listing in the language "fr-FR" for the app "Photo Editor Pro" (developer: Acme Labs).
+ABSOLUTE RULE: use the provided keywords STRICTLY as given (identical spelling and form, case may be adapted), do not translate them: they are already in the target language. Do not invent new keywords in the title and short fields.
+Make sure the strongest keywords (those at the top of the list) all appear in the "description", woven naturally into paragraphs and bullet lists.
+The "description" must be between 3000 and 4000 characters: Google Play indexes it for search, a short description wastes ranking surface.
+FORBIDDEN: no markdown (no ###, no **, no _). Stores display plain text: paragraphs separated by blank lines, lists with simple dashes "- " or bullets "• ".
+Do NOT add a privacy policy link or line in "description": the code automatically appends a final line "label: URL". Provide only the translated label in "privacyLabel".
+Prioritize the first keywords in the list (the strongest) in the title and short fields.
+Respond ONLY in JSON with exactly these keys:
+- "title": Google Play title (max 30 characters)
+- "shortDescription": short description (max 80 characters)
+- "description": long description, between 3000 and 4000 characters (paragraphs + bullet lists)
+- "privacyLabel": short label translated into "fr-FR" for the privacy policy (e.g. "Privacy Policy", "Politique de confidentialité"), WITHOUT the URL or the colon"
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_generate_listing_playstore (with privacy) > user 1`] = `
+"Keywords to use (order = decreasing importance):
+1. photo editor
+2. filters
+
+Generate the Google Play listing in "fr-FR"."
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_screenshot_captions > system 1`] = `"You are an ASO copywriter. Generate short, punchy captions for app listing screenshots, in fr-FR. Each caption is 2 to 5 words, highlights a benefit. Respond ONLY in JSON: { captions: string[] } with exactly 3 elements."`;
+
+exports[`prompt characterization (pre-migration lock) > aso_screenshot_captions > user 1`] = `
+"App: Photo Editor Pro
+Categories: Photo & Video, Productivity
+Description: Crop, filter and retouch your photos in seconds."
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_screenshot_style > system 1`] = `"You are an ASO art director. You are shown screenshots of competitor app listings. Analyze their common visual language and respond ONLY in JSON with these exact keys: backgroundColor (hex #rrggbb of the dominant background), backgroundGradientTo (hex #rrggbb of the gradient's 2nd color, or null if solid background), textColor (hex #rrggbb of the caption text), accentColor (hex #rrggbb accent), fontWeight ("regular" | "semibold" | "bold"), captionCase ("none" | "upper" | "title"), captionPlacement ("top" | "bottom" — where the text sits relative to the visual), deviceFrame (boolean — whether the screenshots are shown in a phone frame)."`;
+
+exports[`prompt characterization (pre-migration lock) > aso_screenshot_style > user 1`] = `"Analyze these competitor screenshots and return the JSON style profile."`;
+
+exports[`prompt characterization (pre-migration lock) > aso_translate_captions > system 1`] = `"You translate app screenshot marketing captions from "en-US" to "fr-FR". Short and punchy style, no literal word-for-word translation if a natural phrasing exists. Maximum 60 characters per caption. Respond ONLY in JSON: { "captions": string[] } with exactly 2 elements, same order."`;
+
+exports[`prompt characterization (pre-migration lock) > aso_translate_captions > user 1`] = `"{"captions":["Fast edits","Pro filters"]}"`;
+
+exports[`prompt characterization (pre-migration lock) > aso_translate_keywords > system 1`] = `
+"You translate App Store / Google Play SEARCH keywords into the language "fr-FR".
+Each item is a short term users type to find an app. Give the natural, idiomatic search term a native speaker of "fr-FR" would actually type, NOT a literal word-for-word translation.
+Keep brand names and proper nouns untranslated. Keep each translation short (1-3 words), lowercase.
+If an input term is already a natural search term in "fr-FR", or is a brand name or proper noun, return it unchanged.
+Respond ONLY in JSON: {"translations": string[]} with EXACTLY one entry per input keyword, in the SAME order. Never drop, add, or reorder items."
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_translate_keywords > user 1`] = `
+"Translate these 2 keywords into "fr-FR", preserving order:
+1. video editing
+2. filter"
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_translate_listing > system 1`] = `"You are an expert ASO translator. Localize (adapt, do not translate word for word) an app listing from en-US to fr-FR, preserving the ASO optimization and the stores' character limits. Respond ONLY in JSON with the exact keys: locale, title (<= 30 characters), subtitle (<= 30 characters), description, keywords (array of localized keywords)."`;
+
+exports[`prompt characterization (pre-migration lock) > aso_translate_listing > user 1`] = `
+"Source locale: en-US
+Title: Photo Editor Pro
+Subtitle: Edit photos fast
+
+Source description:
+Crop, filter and retouch your photos in seconds."
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_translate_whats_new > system 1`] = `
+"You translate App Store "What's New" release notes into the language "fr-FR".
+These are the notes shown to users for an app update. Translate naturally and idiomatically, the way a native speaker of "fr-FR" would write them.
+Preserve line breaks, list markers and meaning. Keep brand names and proper nouns untranslated. Do not add or remove information.
+Respond ONLY in JSON: {"text": string} with the translated release notes."
+`;
+
+exports[`prompt characterization (pre-migration lock) > aso_translate_whats_new > user 1`] = `
+"Translate these release notes into "fr-FR", preserving line breaks:
+
+Bug fixes
+New: dark mode"
+`;

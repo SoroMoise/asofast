@@ -1,0 +1,54 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# env files (keep .env.example)
+.env
+.env*.local
+
+# Local data directory (SQLite + uploads)
+/data
+
+# Agent AI caches
+/.impeccable
+/.superpowers
+/.agents
+
+# Documentation and agent config (keep README only)
+/*.md
+!/README.md
+docs/
+
+# typescript
+*.tsbuildinfo
+
+# supabase
+/supabase/.branches
+/supabase/.temp
+
+# IDE
+.idea/
+.env.local
+
+# Claude Code local config + skill artifacts
+.claude/
+posthog-setup-report.md
