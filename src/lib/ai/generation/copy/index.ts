@@ -1,4 +1,4 @@
-import { completeJSON } from "@/lib/ai/providers/openai";
+import { completeJSON } from "@/lib/ai/providers";
 import type { CopyOutput } from "@/lib/ai/types";
 import { getPrompt, renderTemplate } from "@/lib/aso/prompts";
 import { STORE_LABELS } from "@/lib/constants";

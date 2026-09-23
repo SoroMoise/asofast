@@ -1,4 +1,4 @@
-import { completeJSON } from "@/lib/ai/providers/openai";
+import { completeJSON } from "@/lib/ai/providers";
 
 import { getPrompt, renderTemplate } from "./prompts";
 import type { KeywordEntry } from "./types";

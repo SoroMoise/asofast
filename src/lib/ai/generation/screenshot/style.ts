@@ -1,4 +1,4 @@
-import { completeJSON, completeJSONWithImages } from "@/lib/ai/providers/openai";
+import { completeJSON, completeJSONWithImages } from "@/lib/ai/providers";
 import type { ScreenshotStyle } from "@/lib/ai/types";
 import { getPrompt, renderTemplate } from "@/lib/aso/prompts";
 import type { AppMetadata } from "@/lib/scrapers";

@@ -5,19 +5,20 @@ multilingual translations, and marketing screenshots — then publish directly
 to both stores.
 
 **100% local, free and open source.** No external services required (except
-OpenAI for generation, with your own API key). All your data stays on your
-machine (SQLite + files).
+an LLM provider for generation — OpenAI or Anthropic, with your own API key).
+All your data stays on your machine (SQLite + files).
 
 ## Stack
 
 Next.js 15 (App Router, TypeScript) · Tailwind CSS · SQLite (better-sqlite3) ·
-OpenAI · App Store Connect API · Google Play Android Publisher API
+OpenAI / Anthropic · App Store Connect API · Google Play Android Publisher API
 
 ## Prerequisites
 
 - Node.js 20+
 - npm
-- An OpenAI API key (https://platform.openai.com/api-keys)
+- An OpenAI API key (https://platform.openai.com/api-keys) or an Anthropic
+  API key (https://console.anthropic.com/settings/keys)
 - (optional) App Store Connect / Google Play credentials for publishing
 
 ## Installation
@@ -31,7 +32,9 @@ cp .env.example .env.local
 
 Edit `.env.local`:
 
-- `OPENAI_API_KEY`: your OpenAI API key (required for generation)
+- `AI_PROVIDER`: `openai` or `anthropic` (optional — defaults to `openai` if unset)
+- `OPENAI_API_KEY`: your OpenAI API key (required unless `AI_PROVIDER="anthropic"`)
+- `ANTHROPIC_API_KEY`: your Anthropic API key (required when `AI_PROVIDER="anthropic"`)
 
 ## Run
 
@@ -66,7 +69,7 @@ All your data is stored locally:
 - `./data/asofast.db`: SQLite database (projects, listings, store credentials)
 - `./data/uploads/`: icons, screenshots, feature graphics
 - `./data/icons/`: cache of store icons (fetched through the local proxy)
-- `.env.local`: your OpenAI API key
+- `.env.local`: your AI provider API key
 
 These files are in `.gitignore` — never committed.
 
@@ -84,7 +87,7 @@ src/
   lib/
     db/              SQLite database (schema + helpers)
     storage.ts       local file storage
-    ai/              ASO generation (OpenAI)
+    ai/              ASO generation (OpenAI / Anthropic, via AI_PROVIDER)
     aso/             ASO pipeline (prompts, generation, screenshots)
     publish/         store publishing (App Store Connect, Google Play)
     scrapers/        app lookup (iTunes, Google Play)

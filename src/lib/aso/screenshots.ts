@@ -6,7 +6,7 @@ export { warmFonts } from "@/lib/ai/generation/screenshot/fonts";
 import { applyColorOverrides } from "@/lib/ai/generation/screenshot/color-overrides";
 import { renderFrame } from "@/lib/ai/generation/screenshot/render";
 import { DEFAULT_STYLE } from "@/lib/ai/generation/screenshot/style";
-import { completeJSON, completeJSONWithImages } from "@/lib/ai/providers/openai";
+import { completeJSON, completeJSONWithImages } from "@/lib/ai/providers";
 import type { ScreenshotStyle } from "@/lib/ai/types";
 import { getPrompt, renderTemplate } from "@/lib/aso/prompts";
 import { deleteFile, listFiles, readFile, saveFile } from "@/lib/storage";

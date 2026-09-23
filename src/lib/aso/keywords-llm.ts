@@ -1,4 +1,4 @@
-import { completeJSON } from "@/lib/ai/providers/openai";
+import { completeJSON } from "@/lib/ai/providers";
 import { STORE_LABELS } from "@/lib/constants";
 import type { AppMetadata } from "@/lib/scrapers";
 
