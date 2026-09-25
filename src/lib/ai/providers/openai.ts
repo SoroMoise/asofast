@@ -27,7 +27,7 @@ export const OPENAI_MODEL = process.env.OPENAI_MODEL ?? "gpt-4o";
  * input (le paramètre `instructions` ne compte pas). Les prompts étant
  * éditables en DB, on garantit la contrainte ici plutôt que dans chaque prompt.
  */
-function ensureJsonWord(system: string, user: string): string {
+export function ensureJsonWord(system: string, user: string): string {
   return /json/i.test(system) || /json/i.test(user)
     ? user
     : `${user}\n\nRespond only in JSON.`;

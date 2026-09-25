@@ -11,14 +11,15 @@ All your data stays on your machine (SQLite + files).
 ## Stack
 
 Next.js 15 (App Router, TypeScript) · Tailwind CSS · SQLite (better-sqlite3) ·
-OpenAI / Anthropic · App Store Connect API · Google Play Android Publisher API
+OpenAI / Anthropic / DeepSeek · App Store Connect API · Google Play Android Publisher API
 
 ## Prerequisites
 
 - Node.js 20+
 - npm
-- An OpenAI API key (https://platform.openai.com/api-keys) or an Anthropic
-  API key (https://console.anthropic.com/settings/keys)
+- An OpenAI API key (https://platform.openai.com/api-keys), an Anthropic
+  API key (https://console.anthropic.com/settings/keys) or a DeepSeek
+  API key (https://platform.deepseek.com/api_keys)
 - (optional) App Store Connect / Google Play credentials for publishing
 
 ## Installation
@@ -32,9 +33,10 @@ cp .env.example .env.local
 
 Edit `.env.local`:
 
-- `AI_PROVIDER`: `openai` or `anthropic` (optional — defaults to `openai` if unset)
-- `OPENAI_API_KEY`: your OpenAI API key (required unless `AI_PROVIDER="anthropic"`)
+- `AI_PROVIDER`: `openai`, `anthropic` or `deepseek` (optional — defaults to `openai` if unset)
+- `OPENAI_API_KEY`: your OpenAI API key (required unless `AI_PROVIDER` is `anthropic` or `deepseek`)
 - `ANTHROPIC_API_KEY`: your Anthropic API key (required when `AI_PROVIDER="anthropic"`)
+- `DEEPSEEK_API_KEY`: your DeepSeek API key (required when `AI_PROVIDER="deepseek"`)
 
 ## Run
 
@@ -87,7 +89,7 @@ src/
   lib/
     db/              SQLite database (schema + helpers)
     storage.ts       local file storage
-    ai/              ASO generation (OpenAI / Anthropic, via AI_PROVIDER)
+    ai/              ASO generation (OpenAI / Anthropic / DeepSeek, via AI_PROVIDER)
     aso/             ASO pipeline (prompts, generation, screenshots)
     publish/         store publishing (App Store Connect, Google Play)
     scrapers/        app lookup (iTunes, Google Play)
