@@ -23,7 +23,8 @@ export async function generateTranslation(
 
   const out = (await completeJSON(
     renderTemplate(prompt.system, variables),
-    renderTemplate(prompt.user, variables)
+    renderTemplate(prompt.user, variables),
+    "translate_listing"
   )) as TranslationOutput;
   return { ...out, locale: targetLocale };
 }

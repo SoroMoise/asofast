@@ -88,7 +88,8 @@ export async function generateListingCopy(
 
   const raw = (await completeJSON(
     renderTemplate(prompt.system, variables),
-    renderTemplate(prompt.user, variables)
+    renderTemplate(prompt.user, variables),
+    "generate_listing"
   )) as Record<string, unknown>;
 
   // Lignes légales en fin de description: privacy policy (URL exacte owned by

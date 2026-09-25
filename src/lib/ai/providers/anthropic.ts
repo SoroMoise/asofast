@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 
 import { parseJsonStripNul } from "./openai";
+import { formatUsageLog } from "./usage-log";
 
 let client: Anthropic | null = null;
 
@@ -45,6 +46,17 @@ function extractJsonText(text: string): string {
   return (fenced ? fenced[1] : text).trim();
 }
 
+function logUsage(label: string | undefined, message: Anthropic.Message): void {
+  console.log(
+    formatUsageLog({
+      label,
+      model: message.model,
+      usage: message.usage,
+      stopReason: message.stop_reason,
+    })
+  );
+}
+
 function textFromMessage(message: Anthropic.Message): string {
   return message.content
     .filter((block): block is Anthropic.TextBlock => block.type === "text")
@@ -73,7 +85,11 @@ function toImageBlock(url: string): Anthropic.ImageBlockParam {
  * des NUL réutilisé depuis le provider OpenAI — même frontière, même contrainte
  * de stockage en aval).
  */
-export async function completeJSON(system: string, user: string): Promise<unknown> {
+export async function completeJSON(
+  system: string,
+  user: string,
+  label?: string
+): Promise<unknown> {
   const anthropic = getAnthropic();
   const res = await anthropic.messages.create({
     model: ANTHROPIC_MODEL,
@@ -81,6 +97,7 @@ export async function completeJSON(system: string, user: string): Promise<unknow
     system: ensureJsonInstruction(system),
     messages: [{ role: "user", content: user }],
   });
+  logUsage(label, res);
 
   return parseJsonStripNul(extractJsonText(textFromMessage(res)) || "{}");
 }
@@ -92,7 +109,8 @@ export async function completeJSON(system: string, user: string): Promise<unknow
 export async function completeJSONWithImages(
   system: string,
   text: string,
-  imageUrls: string[]
+  imageUrls: string[],
+  label?: string
 ): Promise<unknown> {
   const anthropic = getAnthropic();
   const res = await anthropic.messages.create({
@@ -106,6 +124,7 @@ export async function completeJSONWithImages(
       },
     ],
   });
+  logUsage(label, res);
 
   return parseJsonStripNul(extractJsonText(textFromMessage(res)) || "{}");
 }

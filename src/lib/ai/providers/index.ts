@@ -10,16 +10,23 @@ function activeProvider(): "openai" | "anthropic" {
   return process.env.AI_PROVIDER === "anthropic" ? "anthropic" : "openai";
 }
 
-export function completeJSON(system: string, user: string): Promise<unknown> {
-  const provider = activeProvider() === "anthropic" ? anthropic : openai;
-  return provider.completeJSON(system, user);
+/**
+ * `label` nomme l'étape appelante dans le log d'usage (Claude uniquement, le
+ * provider OpenAI l'ignore).
+ */
+export function completeJSON(system: string, user: string, label?: string): Promise<unknown> {
+  return activeProvider() === "anthropic"
+    ? anthropic.completeJSON(system, user, label)
+    : openai.completeJSON(system, user);
 }
 
 export function completeJSONWithImages(
   system: string,
   text: string,
-  imageUrls: string[]
+  imageUrls: string[],
+  label?: string
 ): Promise<unknown> {
-  const provider = activeProvider() === "anthropic" ? anthropic : openai;
-  return provider.completeJSONWithImages(system, text, imageUrls);
+  return activeProvider() === "anthropic"
+    ? anthropic.completeJSONWithImages(system, text, imageUrls, label)
+    : openai.completeJSONWithImages(system, text, imageUrls);
 }

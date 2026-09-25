@@ -108,7 +108,8 @@ export async function captionUserScreenshots(
     const raw = (await completeJSONWithImages(
       renderTemplate(prompt.system, variables),
       renderTemplate(prompt.user, variables),
-      chunk.map((c) => c.dataUrl)
+      chunk.map((c) => c.dataUrl),
+      "screenshot_source_captions"
     )) as { captions?: unknown };
 
     const captions = Array.isArray(raw.captions)
@@ -142,7 +143,8 @@ export async function translateCaptions(
   try {
     const raw = (await completeJSON(
       renderTemplate(prompt.system, variables),
-      renderTemplate(prompt.user, variables)
+      renderTemplate(prompt.user, variables),
+      "screenshot_translate_captions"
     )) as {
       captions?: unknown;
     };

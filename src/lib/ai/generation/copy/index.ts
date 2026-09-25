@@ -21,6 +21,7 @@ export async function generateCopy(
 
   return (await completeJSON(
     renderTemplate(prompt.system, variables),
-    renderTemplate(prompt.user, variables)
+    renderTemplate(prompt.user, variables),
+    "generate_copy"
   )) as CopyOutput;
 }

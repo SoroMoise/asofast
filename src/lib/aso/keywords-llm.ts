@@ -30,7 +30,8 @@ export async function extractKeywordsLLM(
 
   const raw = (await completeJSON(
     renderTemplate(prompt.system, variables),
-    renderTemplate(prompt.user, variables)
+    renderTemplate(prompt.user, variables),
+    "extract_keywords"
   )) as { keywords?: unknown };
 
   const out = new Map<string, number>();

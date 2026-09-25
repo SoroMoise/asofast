@@ -43,7 +43,8 @@ export async function extractStyleProfile(
     const raw = (await completeJSONWithImages(
       prompt.system,
       prompt.user,
-      competitorImageUrls
+      competitorImageUrls,
+      "screenshot_style"
     )) as Record<string, unknown>;
 
     return {
@@ -88,7 +89,8 @@ export async function generateCaptions(
   try {
     const raw = (await completeJSON(
       renderTemplate(prompt.system, variables),
-      renderTemplate(prompt.user, variables)
+      renderTemplate(prompt.user, variables),
+      "screenshot_captions"
     )) as { captions?: unknown };
     const captions = Array.isArray(raw.captions)
       ? raw.captions.filter((c): c is string => typeof c === "string")

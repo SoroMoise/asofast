@@ -32,7 +32,8 @@ export async function translateKeywords(
 
   const raw = (await completeJSON(
     renderTemplate(prompt.system, variables),
-    renderTemplate(prompt.user, variables)
+    renderTemplate(prompt.user, variables),
+    "translate_keywords"
   )) as { translations?: unknown };
   const translations = Array.isArray(raw.translations) ? raw.translations : [];
 
@@ -64,7 +65,8 @@ export async function translateWhatsNew(text: string, targetLocale: string): Pro
 
   const raw = (await completeJSON(
     renderTemplate(prompt.system, variables),
-    renderTemplate(prompt.user, variables)
+    renderTemplate(prompt.user, variables),
+    "translate_whats_new"
   )) as { text?: unknown };
   return typeof raw.text === "string" ? raw.text.trim() : "";
 }
