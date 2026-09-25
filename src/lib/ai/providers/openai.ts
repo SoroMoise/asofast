@@ -50,9 +50,55 @@ const NUL = String.fromCharCode(0);
  * contrôles C0 sont légaux en texte et en jsonb Postgres, ne pas sur-nettoyer.
  */
 export function parseJsonStripNul(text: string): unknown {
-  return JSON.parse(text, (_key, value) =>
-    typeof value === "string" && value.includes(NUL) ? value.split(NUL).join("") : value
-  );
+  const stripNul = (_key: string, value: unknown) =>
+    typeof value === "string" && value.includes(NUL) ? value.split(NUL).join("") : value;
+  try {
+    return JSON.parse(text, stripNul);
+  } catch (err) {
+    // Repli seulement quand le parse strict échoue: un JSON valide n'est jamais touché.
+    const repaired = escapeRawControlChars(text);
+    if (repaired === text) throw err;
+    try {
+      return JSON.parse(repaired, stripNul);
+    } catch {
+      // Toujours invalide (ex. sortie tronquée): l'erreur d'origine porte les bonnes positions.
+      throw err;
+    }
+  }
+}
+
+/**
+ * Échappe (\uXXXX) les caractères de contrôle bruts (< U+0020) situés DANS une
+ * chaîne JSON. En JSON mode, DeepSeek émet par intermittence de vrais retours à la
+ * ligne dans la description multi-paragraphes au lieu de "\n" (vu sur hy-AM et
+ * ka-GE): JSON.parse lève "Bad control character in string literal" et la fiche
+ * entière échoue. Le sens est sans ambiguïté (le modèle voulait un saut de ligne),
+ * la réparation est donc sans perte. Les contrôles hors chaîne (indentation du JSON)
+ * sont laissés tels quels, ils sont légaux.
+ */
+function escapeRawControlChars(text: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (const ch of text) {
+    if (!inString) {
+      if (ch === '"') inString = true;
+      out += ch;
+    } else if (escaped) {
+      escaped = false;
+      out += ch;
+    } else if (ch === "\\") {
+      escaped = true;
+      out += ch;
+    } else if (ch === '"') {
+      inString = false;
+      out += ch;
+    } else {
+      const code = ch.charCodeAt(0);
+      out += code < 0x20 ? `\\u${code.toString(16).padStart(4, "0")}` : ch;
+    }
+  }
+  return out;
 }
 
 /**
