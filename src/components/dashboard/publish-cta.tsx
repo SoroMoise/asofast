@@ -7,9 +7,12 @@ import * as React from "react";
 import { useProjectBusy } from "@/components/dashboard/project-busy";
 import { Button } from "@/components/ui/button";
 import { IconCheck, IconInfo, IconX } from "@/components/ui/icons";
+import { Label } from "@/components/ui/label";
+import { MultiSelect } from "@/components/ui/multi-select";
 import { Spinner } from "@/components/ui/spinner";
 import addForReview from "@/dashboard_screens/add_for_review.png";
 import prepareSubmission from "@/dashboard_screens/prepare_submission.png";
+import { STORE_LOCALES } from "@/lib/locales";
 import type { LocaleResult } from "@/lib/publish/types";
 import type { StorePlatform } from "@/types";
 
@@ -70,8 +73,8 @@ function ScopeCheckbox({
 
 /**
  * Gros CTA de publication: pousse les fiches enregistrées (textes +
- * screenshots) sur le store connecté pour toutes les langues cibles, par lots,
- * après confirmation.
+ * screenshots) sur le store connecté pour les langues choisies (toutes par
+ * défaut), par lots, après confirmation.
  */
 export function PublishCta({
   projectId,
@@ -112,10 +115,23 @@ export function PublishCta({
   // Version ». Cochable seule pour une mise à jour de version (les deux seuls
   // champs qui bougent), sans repousser toute la fiche.
   const [publishPrivacyAndWhatsNew, setPublishPrivacyAndWhatsNew] = React.useState(true);
+  // Langues à publier. Tout coché par défaut; le MultiSelect est remonté (`key`)
+  // quand la liste des langues publiables change (nouvelle génération) et
+  // re-remonte alors « tout sélectionné », le défaut sûr. État de session, jamais
+  // persisté, comme le périmètre.
+  const [selectedLocales, setSelectedLocales] = React.useState<string[]>(publishableLocales);
   const feedEndRef = React.useRef<HTMLDivElement>(null);
 
   const storeLabel = store === "appstore" ? "the App Store" : "Google Play";
-  const count = publishableLocales.length;
+  // Ordre de la liste des fiches, pas ordre de clic du MultiSelect; ignore aussi
+  // une langue sélectionnée qui ne serait plus publiable.
+  const localesToPublish = publishableLocales.filter((l) => selectedLocales.includes(l));
+  const count = localesToPublish.length;
+  const localeLabels = new Map(STORE_LOCALES[store].map((o) => [o.value, o.label]));
+  const localeOptions = publishableLocales.map((value) => ({
+    value,
+    label: localeLabels.get(value) ?? value,
+  }));
   // Rien de sélectionné = rien à envoyer. Même règle que `isEmptyScope` côté
   // serveur: chaque bloc optionnel ne compte que sur SON store. Sur App Store
   // `storeAssets` n'est jamais lu (l'icône vient du binaire) et sur Play
@@ -216,9 +232,9 @@ export function PublishCta({
     };
 
     try {
-      for (let i = 0; i < publishableLocales.length; i += LOCALE_BATCH_SIZE) {
-        const batch = publishableLocales.slice(i, i + LOCALE_BATCH_SIZE);
-        const isLastBatch = i + LOCALE_BATCH_SIZE >= publishableLocales.length;
+      for (let i = 0; i < localesToPublish.length; i += LOCALE_BATCH_SIZE) {
+        const batch = localesToPublish.slice(i, i + LOCALE_BATCH_SIZE);
+        const isLastBatch = i + LOCALE_BATCH_SIZE >= localesToPublish.length;
         // App Store: on n'édite que le brouillon par défaut; on ne soumet en review
         // Apple (dernier lot) QUE si l'utilisateur a coché l'option. Play: on
         // committe l'edit partagé au DERNIER lot (→ review Google), les lots
@@ -424,6 +440,29 @@ export function PublishCta({
         ) : null}
       </fieldset>
 
+      {publishableLocales.length > 1 ? (
+        <div className="flex max-w-prose flex-col gap-1.5">
+          <Label htmlFor="publish-locales">
+            Languages to publish ({count}/{publishableLocales.length})
+          </Label>
+          <MultiSelect
+            key={publishableLocales.join(",")}
+            id="publish-locales"
+            name="publish_locales"
+            options={localeOptions}
+            defaultSelected={publishableLocales}
+            placeholder="Choose languages…"
+            searchPlaceholder="Search a language…"
+            summaryFormatter={(c) => `${c} languages selected`}
+            onSelectionChange={(values) => {
+              setSelectedLocales(values);
+              setConfirmPublish(false);
+            }}
+            disabled={publishing}
+          />
+        </div>
+      ) : null}
+
       {store === "appstore" ? (
         <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
           <input
@@ -480,13 +519,18 @@ export function PublishCta({
           </a>
           ) to be able to publish.
         </p>
-      ) : count === 0 ? (
+      ) : publishableLocales.length === 0 ? (
         <p className="max-w-prose text-xs text-muted-foreground">
           No listing saved for your target languages:{" "}
           <a href="#generer" className="underline underline-offset-2 hover:text-foreground">
             generate them first
           </a>
           .
+        </p>
+      ) : count === 0 ? (
+        <p className="max-w-prose text-xs text-muted-foreground">
+          Select at least one language under{" "}
+          <span className="text-foreground">Languages to publish</span>.
         </p>
       ) : nothingSelected ? (
         <p className="max-w-prose text-xs text-muted-foreground">
