@@ -33,6 +33,19 @@ export function splitBatches(items: string[], size: number): string[][] {
 }
 
 /**
+ * Langues à générer quand on saute celles qui ont déjà une fiche: évite de
+ * repayer (crédits + appels LLM) des langues déjà bonnes lors d'une relance.
+ * Conserve l'ordre demandé.
+ */
+export function filterMissingLocales(
+  locales: string[],
+  existingListingLocales: string[]
+): string[] {
+  const existing = new Set(existingListingLocales);
+  return locales.filter((l) => !existing.has(l));
+}
+
+/**
  * Dénominateur de la barre d'avancement.
  *
  * Les deux rounds étant séquentiels, le nombre d'étapes screenshots n'est connu

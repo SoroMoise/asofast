@@ -12,6 +12,7 @@ import {
   ASO_BATCH_CONCURRENCY,
   ASO_BATCH_SIZE,
   computeTotalSteps,
+  filterMissingLocales,
   SHOTS_BATCH_CONCURRENCY,
   SHOTS_BATCH_SIZE,
   splitBatches,
@@ -37,11 +38,13 @@ type StreamEvent =
 export function GenerateCta({
   projectId,
   targetLocales,
+  existingListingLocales,
   hasCompetitors,
   hasSourceScreenshots,
 }: {
   projectId: string;
   targetLocales: string[];
+  existingListingLocales: string[];
   hasCompetitors: boolean;
   hasSourceScreenshots: boolean;
 }) {
@@ -57,11 +60,18 @@ export function GenerateCta({
   const hasShots = sourceShotCount !== null ? sourceShotCount > 0 : hasSourceScreenshots;
   const effectiveLocales = selectedLocales ?? targetLocales;
   const [includeAso, setIncludeAso] = React.useState(true);
+  // Par défaut on ne repaie pas les langues qui ont déjà une fiche (une relance
+  // complète regénérait tout, écrasait les fiches et redébitait les crédits).
+  const [skipExisting, setSkipExisting] = React.useState(true);
   const [wantShots, setWantShots] = React.useState(true);
   const includeShots = wantShots && hasShots;
   const [confirm, setConfirm] = React.useState(false);
   const [generating, setGenerating] = React.useState(false);
   const [completed, setCompleted] = React.useState(0);
+  // Nombre de langues du run en cours/terminé, figé au clic: après router.refresh()
+  // les fiches fraîchement générées sortent de `roundLocales`, ce qui ferait tomber
+  // le dénominateur de la barre à 0 (« 20/0 listings »).
+  const [runLocaleCount, setRunLocaleCount] = React.useState<number | null>(null);
   const [shotsDenominator, setShotsDenominator] = React.useState<number | null>(null);
   const [captioning, setCaptioning] = React.useState(false);
   const [logs, setLogs] = React.useState<LogEntry[]>([]);
@@ -81,12 +91,21 @@ export function GenerateCta({
     if (generating) return;
     setLogs([]);
     setCompleted(0);
+    setRunLocaleCount(null);
     setShotsDenominator(null);
     setMessage(null);
     setError(null);
   }, [localesKey, generating]);
 
-  const count = effectiveLocales.length;
+  // Le filtre ne s'applique qu'avec les listings cochés: en screenshots seuls,
+  // toutes les langues choisies sont traitées. Avec listings + screenshots, les
+  // screenshots suivent les langues dont la fiche vient d'être générée.
+  const skipping = includeAso && skipExisting;
+  const roundLocales = skipping
+    ? filterMissingLocales(effectiveLocales, existingListingLocales)
+    : effectiveLocales;
+  const skippedCount = effectiveLocales.length - roundLocales.length;
+  const count = roundLocales.length;
   const noScope = !includeAso && !includeShots;
   const needsCompetitors = includeAso && !hasCompetitors;
 
@@ -111,7 +130,7 @@ export function GenerateCta({
   const primaryIsAso = includeAso;
   const kinds = (includeAso ? 1 : 0) + (includeShots ? 1 : 0);
   const totalSteps = computeTotalSteps({
-    localeCount: count,
+    localeCount: runLocaleCount ?? count,
     includeAso,
     includeShots,
     survivorCount: shotsDenominator,
@@ -127,7 +146,12 @@ export function GenerateCta({
     needsCompetitors
       ? "Add at least one competitor (Competitors card) for listings, or uncheck “ASO listings” to generate only screenshots."
       : null,
-    count === 0 ? "Save at least one target language (Languages card)." : null,
+    effectiveLocales.length === 0
+      ? "Save at least one target language (Languages card)."
+      : null,
+    effectiveLocales.length > 0 && count === 0
+      ? "Every selected language already has a listing. Untick “Skip languages that already have a listing” to regenerate them, or use “Regenerate this language” on a listing."
+      : null,
   ].filter((b): b is string => b !== null);
 
   function handleGenerateClick() {
@@ -145,6 +169,7 @@ export function GenerateCta({
     setError(null);
     setMessage(null);
     setCompleted(0);
+    setRunLocaleCount(roundLocales.length);
     setShotsDenominator(null);
     setLogs([]);
     let captionTimer: ReturnType<typeof setTimeout> | undefined;
@@ -326,13 +351,13 @@ export function GenerateCta({
     }
 
     try {
-      let survivorList = effectiveLocales;
+      let survivorList = roundLocales;
       if (includeAso) {
-        await runRound(effectiveLocales, ASO_BATCH_SIZE, ASO_BATCH_CONCURRENCY, {
+        await runRound(roundLocales, ASO_BATCH_SIZE, ASO_BATCH_CONCURRENCY, {
           includeAso: true,
           includeShots: false,
         });
-        survivorList = effectiveLocales.filter((l) => survivors.has(l));
+        survivorList = roundLocales.filter((l) => survivors.has(l));
       }
 
       if (includeShots) {
@@ -406,6 +431,25 @@ export function GenerateCta({
           />
           <span className="text-foreground">ASO listings + translations</span>
         </label>
+        {includeAso ? (
+          <label className="ml-6 flex w-fit cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={skipExisting}
+              onChange={(e) => {
+                setSkipExisting(e.target.checked);
+                setConfirm(false);
+              }}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-foreground">Skip languages that already have a listing</span>
+            {skipping && skippedCount > 0 ? (
+              <span className="text-muted-foreground">
+                ({skippedCount} skipped)
+              </span>
+            ) : null}
+          </label>
+        ) : null}
         <label
           className={cn(
             "flex w-fit items-center gap-2 text-sm",

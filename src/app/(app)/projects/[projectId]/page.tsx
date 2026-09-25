@@ -184,6 +184,7 @@ export default async function ProjectDetailPage({
       <GenerateCta
         projectId={project.id}
         targetLocales={project.target_locales}
+        existingListingLocales={(listings ?? []).map((l) => l.locale)}
         hasCompetitors={competitors.length > 0}
         hasSourceScreenshots={hasSourceScreenshots}
       />
