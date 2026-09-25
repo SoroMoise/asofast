@@ -83,9 +83,14 @@ export async function publishProjectListings(input: {
     return { error: "Tick at least one thing to publish under What to publish." };
   }
 
-  const listings = dbListListings(project.id).map((r) => parseListing(r));
+  // Le client publie par lots (1 langue/requête): ne construire et n'envoyer que
+  // les langues demandées, sinon chaque requête re-publie TOUTES les fiches.
+  const requested = new Set(locales);
+  const listings = dbListListings(project.id)
+    .map((r) => parseListing(r))
+    .filter((l) => requested.has(l.locale));
 
-  if (!listings || listings.length === 0) {
+  if (listings.length === 0) {
     return { error: "No listing saved for these languages: generate them first." };
   }
 
