@@ -78,7 +78,6 @@ export async function completeJSON(system: string, user: string): Promise<unknow
   const res = await anthropic.messages.create({
     model: ANTHROPIC_MODEL,
     max_tokens: MAX_OUTPUT_TOKENS,
-    temperature: 0.7,
     system: ensureJsonInstruction(system),
     messages: [{ role: "user", content: user }],
   });
