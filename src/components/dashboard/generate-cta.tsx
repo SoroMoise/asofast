@@ -39,12 +39,14 @@ export function GenerateCta({
   projectId,
   targetLocales,
   existingListingLocales,
+  existingShotLocales,
   hasCompetitors,
   hasSourceScreenshots,
 }: {
   projectId: string;
   targetLocales: string[];
   existingListingLocales: string[];
+  existingShotLocales: string[];
   hasCompetitors: boolean;
   hasSourceScreenshots: boolean;
 }) {
@@ -65,6 +67,9 @@ export function GenerateCta({
   const [skipExisting, setSkipExisting] = React.useState(true);
   const [wantShots, setWantShots] = React.useState(true);
   const includeShots = wantShots && hasShots;
+  // Même logique pour les screenshots: par défaut on ne régénère que les langues
+  // qui n'en ont pas (ou dont le run précédent a échoué).
+  const [skipExistingShots, setSkipExistingShots] = React.useState(true);
   const [confirm, setConfirm] = React.useState(false);
   const [generating, setGenerating] = React.useState(false);
   const [completed, setCompleted] = React.useState(0);
@@ -101,9 +106,17 @@ export function GenerateCta({
   // toutes les langues choisies sont traitées. Avec listings + screenshots, les
   // screenshots suivent les langues dont la fiche vient d'être générée.
   const skipping = includeAso && skipExisting;
-  const roundLocales = skipping
-    ? filterMissingLocales(effectiveLocales, existingListingLocales)
-    : effectiveLocales;
+  const skippingShots = includeShots && skipExistingShots;
+  // Avec les listings cochés, le round 1 porte sur les fiches; le filtre des
+  // screenshots s'applique ensuite aux langues qui survivent. En screenshots
+  // seuls, il s'applique directement aux langues choisies.
+  const roundLocales = includeAso
+    ? skipping
+      ? filterMissingLocales(effectiveLocales, existingListingLocales)
+      : effectiveLocales
+    : skippingShots
+      ? filterMissingLocales(effectiveLocales, existingShotLocales)
+      : effectiveLocales;
   const skippedCount = effectiveLocales.length - roundLocales.length;
   const count = roundLocales.length;
   const noScope = !includeAso && !includeShots;
@@ -149,8 +162,11 @@ export function GenerateCta({
     effectiveLocales.length === 0
       ? "Save at least one target language (Languages card)."
       : null,
-    effectiveLocales.length > 0 && count === 0
+    effectiveLocales.length > 0 && count === 0 && includeAso
       ? "Every selected language already has a listing. Untick “Skip languages that already have a listing” to regenerate them, or use “Regenerate this language” on a listing."
+      : null,
+    effectiveLocales.length > 0 && count === 0 && !includeAso && includeShots
+      ? "Every selected language already has screenshots. Untick “Skip languages that already have screenshots” to regenerate them."
       : null,
   ].filter((b): b is string => b !== null);
 
@@ -358,6 +374,9 @@ export function GenerateCta({
           includeShots: false,
         });
         survivorList = roundLocales.filter((l) => survivors.has(l));
+        if (includeShots && skipExistingShots) {
+          survivorList = filterMissingLocales(survivorList, existingShotLocales);
+        }
       }
 
       if (includeShots) {
@@ -475,6 +494,23 @@ export function GenerateCta({
             </span>
           ) : null}
         </label>
+        {includeShots ? (
+          <label className="ml-6 flex w-fit cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={skipExistingShots}
+              onChange={(e) => {
+                setSkipExistingShots(e.target.checked);
+                setConfirm(false);
+              }}
+              className="h-4 w-4 accent-primary"
+            />
+            <span className="text-foreground">Skip languages that already have screenshots</span>
+            {skippingShots && !includeAso && skippedCount > 0 ? (
+              <span className="text-muted-foreground">({skippedCount} skipped)</span>
+            ) : null}
+          </label>
+        ) : null}
       </fieldset>
       <div>
         <Button

@@ -185,6 +185,13 @@ export default async function ProjectDetailPage({
         projectId={project.id}
         targetLocales={project.target_locales}
         existingListingLocales={(listings ?? []).map((l) => l.locale)}
+        existingShotLocales={(listings ?? [])
+          .filter(
+            (l) =>
+              l.screenshots.length > 0 &&
+              (screenshotOrderTablet.length === 0 || l.screenshots_tablet.length > 0)
+          )
+          .map((l) => l.locale)}
         hasCompetitors={competitors.length > 0}
         hasSourceScreenshots={hasSourceScreenshots}
       />
