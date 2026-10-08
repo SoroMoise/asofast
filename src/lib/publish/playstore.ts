@@ -5,7 +5,7 @@ import { GoogleAuth, type JWTInput } from "google-auth-library";
 import { mapWithConcurrency } from "@/lib/concurrency";
 
 import { createGate } from "./gate";
-import { fetchWithTimeout, withTimeout } from "./http";
+import { fetchWithTimeout, NetworkError, withTimeout } from "./http";
 import type {
   LocaleResult,
   PlayStoreCredentials,
@@ -107,8 +107,21 @@ export async function publishPlayStoreListings(
   ): Promise<Response> =>
     gate.run(async () => {
       // 1 retry sur 429/5xx (échecs propres, réponse rapide). PAS de retry sur
-      // timeout réseau: un POST d'upload non-idempotent pourrait créer un doublon.
-      const res = await fetchWithTimeout(url, init, o);
+      // timeout: un POST d'upload non-idempotent pourrait créer un doublon. Une
+      // coupure réseau est retentée (2 fois, backoff) si la requête est idempotente
+      // (GET/DELETE) OU n'est jamais partie (DNS, connexion): sûr même pour un POST.
+      const idempotent = !init.method || init.method === "GET" || init.method === "DELETE";
+      let res: Response | undefined;
+      for (let attempt = 0; attempt < 3 && !res; attempt += 1) {
+        try {
+          res = await fetchWithTimeout(url, init, o);
+        } catch (e) {
+          const retryable = e instanceof NetworkError && (idempotent || e.neverSent);
+          if (!retryable || attempt === 2) throw e;
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
+      if (!res) throw new Error(`${o.label}: no response.`);
       if (res.status !== 429 && res.status < 500) return res;
       await new Promise((r) => setTimeout(r, 1500));
       return fetchWithTimeout(url, init, o);

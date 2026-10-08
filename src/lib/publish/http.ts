@@ -21,8 +21,42 @@ export async function fetchWithTimeout(
     if (e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError")) {
       throw new Error(`${label}: timed out (>${seconds}s), the call was interrupted.`);
     }
-    throw new Error(`${label}: network error (${e instanceof Error ? e.message : "unknown"}).`);
+    throw new NetworkError(`${label}: network error (${describeNetworkError(e)}).`, networkCode(e));
   }
+}
+
+/** Coupure réseau (≠ timeout, ≠ statut HTTP): distinguable pour décider d'un retry. */
+export class NetworkError extends Error {
+  constructor(
+    message: string,
+    readonly code?: string
+  ) {
+    super(message);
+  }
+
+  /** Échec AVANT envoi de la requête (DNS, connexion refusée/timeout): aucun octet
+   *  n'a atteint le serveur, donc retenter est sûr même pour un POST. */
+  get neverSent(): boolean {
+    return (
+      this.code === "EAI_AGAIN" ||
+      this.code === "ENOTFOUND" ||
+      this.code === "ECONNREFUSED" ||
+      this.code === "UND_ERR_CONNECT_TIMEOUT"
+    );
+  }
+}
+
+function networkCode(e: unknown): string | undefined {
+  return e instanceof Error ? (e.cause as { code?: string } | undefined)?.code : undefined;
+}
+
+/** undici masque la vraie raison derrière "fetch failed": elle est dans `cause`
+ *  (ECONNRESET, UND_ERR_SOCKET, ETIMEDOUT…). */
+function describeNetworkError(e: unknown): string {
+  if (!(e instanceof Error)) return "unknown";
+  const cause = e.cause as { code?: string; message?: string } | undefined;
+  const detail = cause?.code ?? cause?.message;
+  return detail ? `${e.message}: ${detail}` : e.message;
 }
 
 /**
