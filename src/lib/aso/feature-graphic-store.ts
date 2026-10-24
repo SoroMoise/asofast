@@ -50,6 +50,11 @@ export function findFeatureGraphicArt(projectId: string): string | null {
   return file?.path ?? null;
 }
 
+/** Bannière unique du projet (`current.*`, carte Feature graphic) présente ? */
+export function hasDefaultFeatureGraphic(projectId: string): boolean {
+  return listFiles(`${projectId}/feature-graphic`).some((f) => f.name.startsWith("current."));
+}
+
 /** La génération localisée est-elle configurée pour ce projet ? */
 export function isFeatureGraphicConfigured(projectId: string): boolean {
   return readFeatureGraphicTemplate(projectId) !== null && findFeatureGraphicArt(projectId) !== null;
@@ -159,6 +164,8 @@ export type FeatureGraphicContext = {
   template: FeatureGraphicTemplate;
   artDataUrl: string;
   artHash: string;
+  /** Octets de l'illustration (mesure du contraste). */
+  art: Buffer;
 };
 
 export function loadFeatureGraphicContext(
@@ -175,6 +182,7 @@ export function loadFeatureGraphicContext(
     template,
     artDataUrl: `data:${contentTypeFor(artPath)};base64,${art.toString("base64")}`,
     artHash: createHash("sha256").update(art).digest("hex"),
+    art,
   };
 }
 

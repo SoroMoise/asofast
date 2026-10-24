@@ -13,6 +13,7 @@ import {
   FEATURE_GRAPHIC_WIDTH,
   MAX_BADGE_LENGTH,
   MAX_BADGES,
+  LOW_CONTRAST_WARN_SHARE,
   MAX_HEADLINE_LENGTH,
   SAFE_MARGIN_X,
   type FeatureGraphicHeadlineSource,
@@ -35,6 +36,8 @@ type LocaleState = {
 };
 type ApiState = {
   configured: boolean;
+  /** Lisibilité du texte sur le modèle enregistré (null sans illustration). */
+  contrast: { lowShare: number; warn: boolean } | null;
   template: FeatureGraphicTemplate;
   art: string | null;
   sourceLocale: string;
@@ -73,6 +76,41 @@ function SafeZone({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Bannière rendue: entière avec la zone de sécurité, ou telle qu'une carte du
+ * Play Store l'affiche (recadrée au centre en 16:9, coins arrondis).
+ */
+function BannerView({
+  src,
+  alt,
+  card,
+  draft = false,
+}: {
+  src: string;
+  alt: string;
+  card: boolean;
+  draft?: boolean;
+}) {
+  const border = draft ? "border border-dashed" : "border";
+  if (card) {
+    return (
+      <div
+        className={`w-full max-w-md overflow-hidden rounded-2xl ${border}`}
+        style={{ aspectRatio: "16 / 9" }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={alt} className="h-full w-full object-cover" />
+      </div>
+    );
+  }
+  return (
+    <SafeZone>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt} className={`w-full rounded-lg ${border}`} />
+    </SafeZone>
+  );
+}
+
 function padBadges(badges: string[]): string[] {
   return [...badges, "", "", ""].slice(0, MAX_BADGES);
 }
@@ -100,7 +138,14 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
     badges: padBadges([]),
   });
   // Aperçu NON enregistré (modèle du formulaire), en object URL.
-  const [draft, setDraft] = React.useState<{ locale: string; url: string } | null>(null);
+  const [draft, setDraft] = React.useState<{
+    locale: string;
+    url: string;
+    /** Part de la colonne de texte peu lisible (null: non mesurée). */
+    lowContrastShare: number | null;
+  } | null>(null);
+  // Aperçu en carte Play Store (16:9) plutôt qu'en bannière entière.
+  const [cardView, setCardView] = React.useState(false);
   // Dernière couleur de dégradé, pour la retrouver après avoir décoché/recoché.
   const [lastGradient, setLastGradient] = React.useState("#7c3aed");
   const blocked = busy || pageBusy;
@@ -261,10 +306,11 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error ?? "Preview failed.");
       }
+      const share = Number.parseFloat(res.headers.get("X-Banner-Low-Contrast-Share") ?? "");
       const url = URL.createObjectURL(await res.blob());
       setDraft((current) => {
         if (current) URL.revokeObjectURL(current.url);
-        return { locale, url };
+        return { locale, url, lowContrastShare: Number.isFinite(share) ? share : null };
       });
     });
   }
@@ -280,6 +326,10 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
   const stale = supported.filter((l) => l.url && l.stale).map((l) => l.locale);
   const manualCount = supported.filter((l) => l.url && l.manual).length;
   const shownDraft = draft && draft.locale === preview ? draft : null;
+  // Contraste de l'aperçu non enregistré s'il est affiché, sinon du modèle enregistré.
+  const lowContrastShare = shownDraft
+    ? shownDraft.lowContrastShare
+    : (state.contrast?.lowShare ?? null);
   const ready = Boolean(state.art);
   const setT = (patch: Partial<FeatureGraphicTemplate>) => setTpl({ ...tpl, ...patch });
 
@@ -464,6 +514,13 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
           </Button>
         ) : null}
       </div>
+      {lowContrastShare !== null && lowContrastShare > LOW_CONTRAST_WARN_SHARE ? (
+        <p role="status" className="max-w-prose text-xs text-amber-600">
+          Low contrast: {Math.round(lowContrastShare * 100)}% of the text area is too close to the
+          text color{shownDraft ? " (current settings)" : ""}. Pick another text color, move the
+          text to the other side, or keep that part of the illustration plain.
+        </p>
+      ) : null}
       {unsupported.length > 0 ? (
         <p className="max-w-prose text-xs text-muted-foreground">
           {unsupported.map((l) => LOCALE_LABELS.get(l.locale) ?? l.locale).join(", ")}: no
@@ -509,6 +566,14 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
             <Button type="button" variant="outline" size="sm" disabled={blocked} onClick={previewDraft}>
               Preview current settings
             </Button>
+            <label className="flex items-center gap-1 text-xs">
+              <input
+                type="checkbox"
+                checked={cardView}
+                onChange={(e) => setCardView(e.target.checked)}
+              />
+              As a Play Store card (16:9 crop)
+            </label>
           </div>
           {shownDraft ? (
             <div className="flex flex-col gap-1">
@@ -517,26 +582,21 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
                 {preview === state.sourceLocale ? "" : " (text translated on the fly)"}. Generate
                 the banners to keep it.
               </p>
-              <SafeZone>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={shownDraft.url}
-                  alt={`Banner preview ${shownDraft.locale}`}
-                  className="w-full rounded-lg border border-dashed"
-                />
-              </SafeZone>
+              <BannerView
+                src={shownDraft.url}
+                alt={`Banner preview ${shownDraft.locale}`}
+                card={cardView}
+                draft
+              />
             </div>
           ) : null}
           {previewState?.url ? (
             <>
-              <SafeZone>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={previewState.url}
-                  alt={`Banner ${previewState.locale}`}
-                  className="w-full rounded-lg border"
-                />
-              </SafeZone>
+              <BannerView
+                src={previewState.url}
+                alt={`Banner ${previewState.locale}`}
+                card={cardView}
+              />
               <div className="grid max-w-2xl gap-2 sm:grid-cols-2">
                 <Input
                   className="sm:col-span-2"

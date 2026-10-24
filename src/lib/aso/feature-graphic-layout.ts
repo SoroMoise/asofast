@@ -20,6 +20,8 @@ export const FEATURE_GRAPHIC_HEIGHT = 500;
  * éléments importants dans cette même zone.
  */
 export const SAFE_MARGIN_X = 96;
+/** Marge verticale de la colonne de texte. */
+export const TEXT_PAD_Y = 64;
 export const MAX_BADGES = 3;
 export const MAX_HEADLINE_LENGTH = 60;
 export const MAX_BADGE_LENGTH = 32;
@@ -235,6 +237,9 @@ const WIDE = /[԰-֏஀-௿ఀ-౿ಀ-೿ഀ-ൿ඀-෿Ⴀ-ჿ]/;
 // Marques combinantes: pas de largeur propre (évite de surestimer l'indien/thaï).
 const COMBINING = /[̀-ͯऀ-ःऺ-ॏ॑-ॗॢॣঁ-ঃ়-ৗਁ-ਃ਼-ੑઁ-ઃ઼-્ଁ-ଃ଼-ୗஂா-்ఀ-ఄా-ౖಁ-ಃ಼-ೖഀ-ഃ഻-ൗඁ-ඃ්-ෟัิ-ฺ็-๎ັິ-ຼ່-ໍါ-ှ឴-៓ً-ְٰٟ-ׇ]/;
 
+/** Largeur d'un caractère en em (réelle: cf. font-metrics, sinon charAdvance). */
+export type MeasureChar = (ch: string) => number;
+
 /** Largeur estimée d'un caractère, en em, pour Poppins bold + polices de script. */
 export function charAdvance(ch: string): number {
   if (COMBINING.test(ch)) return 0;
@@ -265,21 +270,26 @@ export function breakTokens(text: string): string[] {
   return tokens;
 }
 
-function tokenWidth(token: string): number {
+function tokenWidth(token: string, measure: MeasureChar): number {
   let w = 0;
-  for (const ch of token) w += charAdvance(ch);
+  for (const ch of token) w += measure(ch);
   return w;
 }
 
 /** Nombre de lignes à une taille donnée (null si un token seul déborde). */
-export function lineCount(text: string, fontSize: number, maxWidth: number): number | null {
+export function lineCount(
+  text: string,
+  fontSize: number,
+  maxWidth: number,
+  measure: MeasureChar = charAdvance
+): number | null {
   const tokens = breakTokens(text);
   if (tokens.length === 0) return 0;
-  const space = charAdvance(" ") * fontSize;
+  const space = measure(" ") * fontSize;
   let lines = 1;
   let current = 0;
   for (const token of tokens) {
-    const w = tokenWidth(token) * fontSize;
+    const w = tokenWidth(token, measure) * fontSize;
     if (w > maxWidth) return null;
     const isCjk = CJK.test(token);
     const gap = current === 0 || isCjk ? 0 : space;
@@ -306,10 +316,11 @@ export function fitHeadlineFontSize(opts: {
   maxLines?: number;
   max?: number;
   min?: number;
+  measure?: MeasureChar;
 }): number {
-  const { text, maxWidth, maxHeight, maxLines = 3, max = 66, min = 26 } = opts;
+  const { text, maxWidth, maxHeight, maxLines = 3, max = 66, min = 26, measure } = opts;
   for (let size = max; size > min; size--) {
-    const lines = lineCount(text, size, maxWidth);
+    const lines = lineCount(text, size, maxWidth, measure);
     if (lines === null) continue;
     if (lines <= maxLines && lines * size * HEADLINE_LINE_HEIGHT <= maxHeight) return size;
   }
@@ -322,14 +333,18 @@ export const BADGE_CHROME_X = 2 * 16 + 3;
 export const BADGE_GAP = 10;
 
 /** Taille commune des badges pour qu'ils tiennent sur au plus deux rangées. */
-export function fitBadgeFontSize(badges: string[], maxWidth: number): number {
+export function fitBadgeFontSize(
+  badges: string[],
+  maxWidth: number,
+  measure: MeasureChar = charAdvance
+): number {
   for (let size = 20; size >= 13; size--) {
     let rows = 1;
     let current = 0;
     let fits = true;
     for (const badge of badges) {
       // Le moteur compte la marge de chaque badge dans la largeur de la rangée.
-      const w = tokenWidth(badge) * size + BADGE_CHROME_X + BADGE_GAP;
+      const w = tokenWidth(badge, measure) * size + BADGE_CHROME_X + BADGE_GAP;
       if (w > maxWidth) {
         fits = false;
         break;
@@ -345,11 +360,65 @@ export function fitBadgeFontSize(badges: string[], maxWidth: number): number {
   return 13;
 }
 
+/** Colonne de texte (px), côté et largeur du modèle, dans la zone de sécurité. */
+export function textColumnBox(tpl: FeatureGraphicTemplate): {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+} {
+  const width = Math.round(FEATURE_GRAPHIC_WIDTH * tpl.textWidth) - SAFE_MARGIN_X;
+  return {
+    left: tpl.textSide === "left" ? SAFE_MARGIN_X : FEATURE_GRAPHIC_WIDTH - SAFE_MARGIN_X - width,
+    top: TEXT_PAD_Y,
+    width,
+    height: FEATURE_GRAPHIC_HEIGHT - 2 * TEXT_PAD_Y,
+  };
+}
+
+/** Luminance relative WCAG d'une couleur sRGB 0–255. */
+export function relativeLuminance(r: number, g: number, b: number): number {
+  const lin = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/** Rapport de contraste WCAG (1 à 21) entre deux luminances. */
+export function contrastRatio(a: number, b: number): number {
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+/** Seuil WCAG AA pour du grand texte (le titre et les badges en gras). */
+export const MIN_TEXT_CONTRAST = 3;
+/** Part de la colonne de texte sous ce seuil au-delà de laquelle on avertit. */
+export const LOW_CONTRAST_WARN_SHARE = 0.15;
+
+export function hexToRgb(hex: string): [number, number, number] {
+  const m = HEX.test(hex) ? hex : "#ffffff";
+  return [parseInt(m.slice(1, 3), 16), parseInt(m.slice(3, 5), 16), parseInt(m.slice(5, 7), 16)];
+}
+
+/**
+ * Part (0–1) des pixels RGB de la colonne de texte dont le contraste avec la
+ * couleur du texte est sous MIN_TEXT_CONTRAST.
+ */
+export function lowContrastShare(pixels: Uint8Array, channels: number, textColor: string): number {
+  const text = relativeLuminance(...hexToRgb(textColor));
+  let low = 0;
+  let total = 0;
+  for (let i = 0; i + 2 < pixels.length; i += channels) {
+    total++;
+    if (contrastRatio(text, relativeLuminance(pixels[i], pixels[i + 1], pixels[i + 2])) < MIN_TEXT_CONTRAST) {
+      low++;
+    }
+  }
+  return total === 0 ? 0 : low / total;
+}
+
 /** Couleur claire ? (pour choisir le style des badges). */
 export function isLightColor(hex: string): boolean {
-  const m = HEX.test(hex) ? hex : "#ffffff";
-  const r = parseInt(m.slice(1, 3), 16);
-  const g = parseInt(m.slice(3, 5), 16);
-  const b = parseInt(m.slice(5, 7), 16);
+  const [r, g, b] = hexToRgb(hex);
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 150;
 }

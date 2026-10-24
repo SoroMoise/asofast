@@ -2,8 +2,10 @@ import { warmFonts } from "@/lib/aso";
 import {
   DEFAULT_FEATURE_GRAPHIC_TEMPLATE,
   findFeatureGraphicArt,
+  hasDefaultFeatureGraphic,
   hasLocaleFeatureGraphic,
   loadFeatureGraphicContext,
+  measureTextContrast,
   localeFeatureGraphicPaths,
   localeFeatureGraphicStatus,
   readFeatureGraphicTemplate,
@@ -93,8 +95,13 @@ export async function GET(_request: Request, { params }: Params): Promise<Respon
   });
   return Response.json({
     configured: template !== null,
+    // Lisibilité du texte sur le modèle enregistré (null sans illustration).
+    contrast: ctx ? await measureTextContrast(ctx.template, ctx.art).catch(() => null) : null,
     template: template ?? DEFAULT_FEATURE_GRAPHIC_TEMPLATE,
     art: art ? `/api/files/${art}?v=${stamp}` : null,
+    // Bannière unique du projet: celle que Google Play montre aux langues sans
+    // bannière localisée.
+    defaultBanner: hasDefaultFeatureGraphic(project.id),
     sourceLocale: project.source_locale,
     locales,
   });
@@ -124,7 +131,8 @@ export async function PUT(request: Request, { params }: Params): Promise<Respons
  * langue en échec (police, traduction) n'empêche pas les autres.
  *
  * POST ?preview=1  body: { template, locale } → JPEG de la langue avec le modèle
- * NON enregistré du formulaire. Rien n'est écrit.
+ * NON enregistré du formulaire, et part de la colonne de texte peu lisible dans
+ * l'en-tête X-Banner-Low-Contrast-Share. Rien n'est écrit.
  */
 export async function POST(request: Request, { params }: Params): Promise<Response> {
   const { projectId } = await params;
@@ -236,8 +244,14 @@ async function preview(
       artDataUrl: ctx.artDataUrl,
       locale,
     });
+    const contrast = await measureTextContrast(ctx.template, ctx.art).catch(() => null);
     return new Response(new Uint8Array(jpeg), {
-      headers: { "Content-Type": "image/jpeg", "Cache-Control": "no-store" },
+      headers: {
+        "Content-Type": "image/jpeg",
+        "Cache-Control": "no-store",
+        // Part de la colonne de texte peu lisible pour le modèle NON enregistré.
+        ...(contrast ? { "X-Banner-Low-Contrast-Share": contrast.lowShare.toFixed(3) } : {}),
+      },
     });
   } catch (e) {
     return Response.json(

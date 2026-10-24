@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
+import { FeatureGraphicPublishSummary } from "@/components/dashboard/feature-graphic-publish-summary";
 import { useProjectBusy } from "@/components/dashboard/project-busy";
 import { Button } from "@/components/ui/button";
 import { IconCheck, IconInfo, IconX } from "@/components/ui/icons";
@@ -453,6 +454,15 @@ export function PublishCta({
             }}
             label="Icon and feature graphic"
             hint="512×512 icon and 1024×500 banner (localized banners go to their own language)"
+          />
+        ) : null}
+        {store === "playstore" && publishStoreAssets ? (
+          <FeatureGraphicPublishSummary
+            projectId={projectId}
+            locales={localesToPublish}
+            labels={localeLabels}
+            // Relu au 1er clic de publication: les bannières ont pu changer sur la page.
+            refreshKey={confirmPublish ? 1 : 0}
           />
         ) : null}
       </fieldset>
