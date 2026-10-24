@@ -24,6 +24,10 @@ import {
   type ScreenshotFrame,
   type SourceCaption,
 } from "@/lib/aso";
+import {
+  generateLocaleFeatureGraphic,
+  isFeatureGraphicConfigured,
+} from "@/lib/aso/feature-graphic";
 import { translateWhatsNew } from "@/lib/aso/translate";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { MAX_FEATURE_LENGTH, MAX_FEATURES } from "@/lib/constants";
@@ -571,6 +575,11 @@ export async function generateProjectScreenshots(input: {
       ? project.target_locales
       : [project.source_locale];
     const existingListings = dbListListings(project.id);
+    const bannerConfigured =
+      project.store === "playstore" && isFeatureGraphicConfigured(project.id);
+    const titleByLocale = new Map(
+      existingListings.map((row) => [String(row.locale), String(row.title ?? "")] as const)
+    );
     const locales = resolveRequestedLocales(
       input.locales,
       allLocales,
@@ -631,6 +640,24 @@ export async function generateProjectScreenshots(input: {
           screenshots: frames,
           screenshots_tablet: tabletFrames,
         });
+
+        // Bannière localisée (Play Store), si le modèle et l'illustration sont
+        // configurés. Non bloquant: une bannière en échec se relance depuis la
+        // carte Feature graphic sans refaire les captures.
+        if (bannerConfigured) {
+          try {
+            await generateLocaleFeatureGraphic({
+              projectId: project.id,
+              sourceLocale: project.source_locale,
+              locale,
+              listingTitle: titleByLocale.get(locale) ?? null,
+            });
+          } catch (e) {
+            console.error(
+              `[feature graphic] locale=${locale} FAILED: ${e instanceof Error ? e.message : e}`
+            );
+          }
+        }
 
         await pruneLocaleFrames(project, locale, {
           phone: frames.length,

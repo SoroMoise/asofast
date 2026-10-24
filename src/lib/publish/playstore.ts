@@ -364,8 +364,10 @@ export async function publishPlayStoreListings(
         );
       }
 
-      // Feature graphic: uniquement sur la langue par défaut de la fiche.
-      if (update.featureGraphic && isDefaultLocale(lang)) {
+      // Feature graphic: la bannière localisée va sur SA langue; la bannière
+      // unique du projet uniquement sur la langue par défaut (les autres langues
+      // en héritent côté Play).
+      if (update.featureGraphic && (update.featureGraphicLocalized || isDefaultLocale(lang))) {
         const fg = update.featureGraphic;
         imageTasks.push(
           (async () => {

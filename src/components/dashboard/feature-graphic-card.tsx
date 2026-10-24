@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { LocalizedFeatureGraphic } from "@/components/dashboard/feature-graphic-localized";
 import { useProjectBusy } from "@/components/dashboard/project-busy";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -113,7 +114,7 @@ export function FeatureGraphicCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <Label htmlFor="feature-graphic-file" className="flex items-center gap-2">
-          Google Play banner (1024×500, required)
+          Default banner (1024×500): used for languages without a localized banner
           {busy ? <Spinner className="h-3.5 w-3.5" /> : null}
         </Label>
 
@@ -173,8 +174,9 @@ export function FeatureGraphicCard({
         </div>
 
         <p className="max-w-prose text-xs text-muted-foreground">
-          Resized to 1024×500 without cropping if needed. This feature graphic
-          will be used across all languages when publishing.
+          Resized to 1024×500 without cropping if needed. Published on the
+          listing&apos;s default language only; Google Play shows it for every
+          language that has no banner of its own.
         </p>
         {savings ? (
           <p className="text-xs text-muted-foreground">
@@ -186,6 +188,8 @@ export function FeatureGraphicCard({
             {error}
           </p>
         ) : null}
+
+        <LocalizedFeatureGraphic projectId={projectId} />
       </CardContent>
     </Card>
   );
