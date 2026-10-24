@@ -708,6 +708,21 @@ export async function saveScreenshotCaptions(input: {
       ...(device === "tablet" ? { screenshots_tablet: frames } : { screenshots: frames }),
     });
 
+    // Captions edited in the SOURCE language become the base that every other
+    // language is translated from on the next screenshot generation.
+    if (String(input.locale) === project.source_locale) {
+      const baseCaptions: SourceCaption[] = entries.map((e) => ({
+        path: e.path,
+        caption: e.caption,
+      }));
+      dbUpdateProject(
+        project.id,
+        device === "tablet"
+          ? { screenshot_captions_tablet: baseCaptions }
+          : { screenshot_captions: baseCaptions }
+      );
+    }
+
     revalidatePath(`/projects/${project.id}`);
     return {};
   } catch (e) {

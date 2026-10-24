@@ -56,7 +56,15 @@ const CAPTION_VERTICAL_FILL = 0.86;
  * en contenir (c'est ce qui manquait aux tablettes, ou 2 lignes ne suffisaient
  * pas et le texte etait coupe).
  */
+// Les scripts indiens du sud, le cingalais, le georgien, l'armenien, le birman
+// et le khmer ont des glyphes nettement plus larges que Poppins: avec l'advance
+// latin (0.64 em) la simulation sous-estime la largeur, choisit une police trop
+// grande, et la caption deborde du haut de l'image (texte coupe).
+const WIDE_SCRIPT = /[\u0530-\u058F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0D80-\u0DFF\u1000-\u109F\u10A0-\u10FF\u1780-\u17FF]/;
+const WIDE_SCRIPT_ADVANCE = 0.95;
+
 function captionFontSize(width: number, caption: string, zoneHeight: number): number {
+  const advance = WIDE_SCRIPT.test(caption) ? WIDE_SCRIPT_ADVANCE : AVG_CHAR_ADVANCE;
   const avail = width * 0.88; // padding de 0.06 de chaque cote
   const usableHeight = zoneHeight * CAPTION_VERTICAL_FILL;
   const words = caption.trim().split(/\s+/).filter(Boolean);
@@ -68,11 +76,11 @@ function captionFontSize(width: number, caption: string, zoneHeight: number): nu
   // ou null si un mot seul est deja plus large que la largeur dispo (dans ce cas
   // il faut descendre encore). Largeur d'un mot ~ nb de chars * advance * police.
   const lineCount = (font: number): number | null => {
-    const spaceWidth = AVG_CHAR_ADVANCE * font;
+    const spaceWidth = advance * font;
     let lines = 1;
     let lineWidth = 0;
     for (const word of words) {
-      const wordWidth = word.length * AVG_CHAR_ADVANCE * font;
+      const wordWidth = word.length * advance * font;
       if (wordWidth > avail) return null; // mot seul trop large a cette taille
       if (lineWidth === 0) lineWidth = wordWidth;
       else if (lineWidth + spaceWidth + wordWidth <= avail) lineWidth += spaceWidth + wordWidth;

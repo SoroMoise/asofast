@@ -3,7 +3,40 @@
  * We ship a single curated family (Poppins) in three weights; the extracted
  * competitor style picks a weight. Fetched once from a CDN and cached in memory.
  */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
 import { mapWithConcurrency } from "@/lib/concurrency";
+
+// Cache disque des polices: une police deja telechargee (ou deposee a la main
+// dans data/uploads/_fonts/) est relue localement au lieu d'etre refetchee du
+// CDN. Indispensable pour les grosses polices CJK (~8 Mo) sur une connexion lente.
+const LOCAL_FONT_DIR = path.join(process.cwd(), "data", "uploads", "_fonts");
+
+function localFontPath(url: string): string {
+  return path.join(LOCAL_FONT_DIR, path.basename(new URL(url).pathname));
+}
+
+function readLocalFont(url: string): ArrayBuffer | null {
+  try {
+    const file = localFontPath(url);
+    if (!existsSync(file)) return null;
+    const buf = readFileSync(file);
+    if (buf.byteLength === 0) return null;
+    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalFont(url: string, data: ArrayBuffer): void {
+  try {
+    mkdirSync(LOCAL_FONT_DIR, { recursive: true });
+    writeFileSync(localFontPath(url), Buffer.from(data));
+  } catch {
+    // best-effort
+  }
+}
 
 const FONT_URLS = {
   regular: "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/poppins/Poppins-Regular.ttf",
@@ -72,10 +105,14 @@ async function fetchFontAttempt(url: string): Promise<ArrayBuffer> {
 }
 
 async function fetchFontOnce(url: string): Promise<ArrayBuffer> {
+  const local = readLocalFont(url);
+  if (local) return local;
   let lastError: unknown;
   for (let attempt = 1; attempt <= FONT_FETCH_ATTEMPTS; attempt++) {
     try {
-      return await fetchFontAttempt(url);
+      const data = await fetchFontAttempt(url);
+      writeLocalFont(url, data);
+      return data;
     } catch (err) {
       lastError = err;
       // La cause reelle (timeout d'en-tetes, 429 du CDN, corps cale, reset) etait

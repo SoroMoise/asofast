@@ -77,6 +77,11 @@ export type LocaleResult = {
   locale: string;
   updatedFields: string[];
   error?: string;
+  /**
+   * Rien a publier pour cette langue avec le contenu choisi (ex: icone et feature
+   * graphic seuls, qui ne vont que sur la langue par defaut). Ni succes ni echec.
+   */
+  skipped?: boolean;
 };
 
 export type PublishResult = {

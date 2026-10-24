@@ -23,9 +23,15 @@ import type { StorePlatform } from "@/types";
 // arrive. À remonter une fois le diff confirmé (logs [publish play] sets_skipped).
 const LOCALE_BATCH_SIZE = 1;
 
+// Play Store: nombre de requêtes (= langues, vu LOCALE_BATCH_SIZE) partageant un
+// même edit avant de le committer. Un seul edit pour toutes les langues perdait
+// TOUTE la publication à la moindre coupure (edit jamais committé → fiche
+// inchangée sur le store); par groupes, chaque groupe terminé est acquis.
+const LOCALES_PER_EDIT = 10;
+
 // Une ligne du feed = une langue. "pending" quand elle commence, "ok"/"fail"
 // quand elle finit. La liste sert de progression temps réel (streaming NDJSON).
-type FeedStatus = "pending" | "ok" | "fail";
+type FeedStatus = "pending" | "ok" | "fail" | "skip";
 type FeedEntry = { locale: string; status: FeedStatus; detail?: string };
 
 type PublishEvent =
@@ -218,10 +224,11 @@ export function PublishCta({
         collected.push(...(ev.perLocale ?? []));
         // Détail final par langue (champs mis à jour) une fois le lot commité.
         for (const r of ev.perLocale ?? []) {
-          const failed = Boolean(r.error) || r.updatedFields.length === 0;
+          const skipped = Boolean(r.skipped) && !r.error;
+          const failed = !skipped && (Boolean(r.error) || r.updatedFields.length === 0);
           upsertFeed(r.locale, {
-            status: failed ? "fail" : "ok",
-            detail: r.error ?? r.updatedFields.join(", "),
+            status: skipped ? "skip" : failed ? "fail" : "ok",
+            detail: skipped ? "nothing to publish" : (r.error ?? r.updatedFields.join(", ")),
           });
           markCompleted(r.locale);
         }
@@ -239,8 +246,9 @@ export function PublishCta({
         // Apple (dernier lot) QUE si l'utilisateur a coché l'option. Play: on
         // committe l'edit partagé au DERNIER lot (→ review Google), les lots
         // précédents ne font que remplir l'edit.
+        const endsEditGroup = (i / LOCALE_BATCH_SIZE + 1) % LOCALES_PER_EDIT === 0;
         const commit =
-          store === "appstore" ? isLastBatch && submitForReview : isLastBatch;
+          store === "appstore" ? isLastBatch && submitForReview : isLastBatch || endsEditGroup;
 
         const res = await fetch(`/api/projects/${projectId}/publish`, {
           method: "POST",
@@ -295,6 +303,8 @@ export function PublishCta({
             handleEvent(ev);
           }
         }
+        // Edit Play committé: le groupe suivant en ouvre un nouveau.
+        if (store === "playstore" && commit) editId = undefined;
       }
 
       const okCount = collected.filter((r) => r.updatedFields.length > 0 && !r.error).length;
@@ -302,7 +312,10 @@ export function PublishCta({
       // de façon persistante: un rejet isolé (ex: code langue refusé par le store)
       // ne doit pas disparaître derrière un message vert et être découvert des
       // jours plus tard sur la console du store.
-      const failed = collected.filter((r) => r.error || r.updatedFields.length === 0);
+      const skippedCount = collected.filter((r) => r.skipped && !r.error).length;
+      const failed = collected.filter(
+        (r) => r.error || (r.updatedFields.length === 0 && !r.skipped)
+      );
       const failedSummary =
         failed.length <= 6
           ? failed
@@ -312,7 +325,11 @@ export function PublishCta({
               .slice(0, 10)
               .map((r) => r.locale)
               .join(", ")}${failed.length > 10 ? "…" : ""}`;
-      if (okCount === 0) {
+      const skippedNote =
+        skippedCount > 0 ? ` ${skippedCount} language(s) had nothing to publish.` : "";
+      if (okCount === 0 && failed.length === 0 && problems.length === 0) {
+        setMessage(`Nothing changed on ${storeLabel}.${skippedNote}`);
+      } else if (okCount === 0) {
         setError(
           problems[0] ||
             failedSummary ||
@@ -329,7 +346,7 @@ export function PublishCta({
             ? submitForReview
               ? `${okCount}/${count} language(s) updated and version submitted for Apple review.`
               : `${okCount}/${count} language(s) updated (draft). Submit the version from App Store Connect when you're ready.`
-            : `${okCount}/${count} language(s) updated and sent for Google review.`
+            : `${okCount}/${count} language(s) updated and sent for Google review.${skippedNote}`
         );
       }
       router.refresh();
@@ -586,6 +603,8 @@ export function PublishCta({
                         <Spinner className="h-3.5 w-3.5" />
                       ) : f.status === "ok" ? (
                         <IconCheck className="h-3.5 w-3.5" />
+                      ) : f.status === "skip" ? (
+                        <IconInfo className="h-3.5 w-3.5" />
                       ) : (
                         <IconX className="h-3.5 w-3.5" />
                       )}

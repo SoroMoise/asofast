@@ -230,11 +230,16 @@ export async function publishPlayStoreListings(
       setsSkipped++;
       return { count: limited.length, changed: false };
     }
-    await api(
+    const deleteRes = await api(
       `${API}/${packageName}/edits/${editId}/listings/${encodeURIComponent(lang)}/${imageType}`,
       { method: "DELETE", headers },
       { timeoutMs: 30_000, label: `Google Play (${lang} ${imageType}: delete)` }
     );
+    // Un DELETE refusé laissait les anciennes images en place: l'upload suivant
+    // dépassait alors la limite d'images, ou pire, la langue gardait l'ancien jeu.
+    if (!deleteRes.ok && deleteRes.status !== 404) {
+      throw new Error(`delete ${imageType} ${deleteRes.status}: ${(await deleteRes.text()).slice(0, 200)}`);
+    }
     for (const shot of limited) {
       const contentType = /\.jpe?g$/i.test(shot.fileName) ? "image/jpeg" : "image/png";
       const upRes = await api(
@@ -373,7 +378,9 @@ export async function publishPlayStoreListings(
       await Promise.all(imageTasks);
 
       onProgress?.(appLocale, "done", true);
-      return { locale: appLocale, updatedFields: assemble() };
+      const updatedFields = assemble();
+      if (updatedFields.length === 0) return { locale: appLocale, updatedFields, skipped: true };
+      return { locale: appLocale, updatedFields };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Error";
       onProgress?.(appLocale, "done", false, msg);
@@ -409,8 +416,17 @@ export async function publishPlayStoreListings(
   }
 
   const okCount = perLocale.filter((r) => r.updatedFields.length > 0 && !r.error).length;
+  const skippedCount = perLocale.filter((r) => r.skipped && !r.error).length;
+  const failedCount = perLocale.length - okCount - skippedCount;
+  const skippedNote = skippedCount > 0 ? ` ${skippedCount} with nothing to publish.` : "";
   const message = opts?.commit
-    ? `Google Play: ${okCount}/${updates.length} language(s) updated and sent for review.`
-    : `Google Play: ${okCount}/${updates.length} language(s) prepared in the edit.`;
-  return { store: "playstore", ok: okCount > 0, message, perLocale, editId };
+    ? `Google Play: ${okCount}/${updates.length} language(s) updated and sent for review.${skippedNote}`
+    : `Google Play: ${okCount}/${updates.length} language(s) prepared in the edit.${skippedNote}`;
+  return {
+    store: "playstore",
+    ok: okCount > 0 || failedCount === 0,
+    message,
+    perLocale,
+    editId,
+  };
 }
