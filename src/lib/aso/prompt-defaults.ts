@@ -3,8 +3,7 @@ export type PromptTemplate = { system: string; user: string };
 /**
  * Embarked fallbacks for every LLM prompt. The DB table `prompts` (editable in
  * SQLite, no redeploy) primes; these are used verbatim only when the row is
- * missing or the DB is unavailable. Keep each entry byte-identical to the
- * matching row in `db/migrations/0019_prompts_seed_all.sql`.
+ * missing or the DB is unavailable.
  *
  * Templates use `{{var}}` substitution (see renderTemplate). `{{#if name}}...
  * {{/if}}` keeps its body only when `name` is a non-empty string variable —
@@ -106,6 +105,12 @@ Respond ONLY in JSON: {"text": string} with the translated release notes.`,
   aso_translate_captions: {
     system: `You translate app screenshot marketing captions from "{{from_locale}}" to "{{to_locale}}". Short and punchy style, no literal word-for-word translation if a natural phrasing exists. Maximum 60 characters per caption. Respond ONLY in JSON: { "captions": string[] } with exactly {{count}} elements, same order.`,
     user: `{{captions_json}}`,
+  },
+
+  // Translate the text of a localized Play Store feature graphic (banner).
+  aso_translate_feature_graphic: {
+    system: `You translate the text of a Google Play feature graphic (1024x500 promotional banner) from "{{from_locale}}" to "{{to_locale}}". It is read in under a second: natural, punchy marketing phrasing in the target language, never a literal word-for-word translation. Keep numbers, brand and product names as-is. HARD LIMITS: "headline" at most {{max_headline}} characters; each badge at most {{max_badge}} characters (2 to 4 words, no final period). If a faithful translation is too long, rephrase it shorter instead of cutting it. An empty "headline" stays empty. Respond ONLY in JSON: { "headline": string, "badges": string[] } with exactly {{count}} badges, same order.`,
+    user: `{{texts_json}}`,
   },
 
   // Keyword-driven App Store listing generation.

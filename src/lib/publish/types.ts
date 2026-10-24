@@ -40,8 +40,14 @@ export type StoreUpdate = {
   screenshotsTablet?: StoreScreenshot[];
   /** Icône 512×512 (Play Store uniquement — l'icône App Store vient du binaire). */
   icon?: StoreScreenshot;
-  /** Feature graphic 1024×500 (Play Store, même visuel pour toutes les langues). */
+  /**
+   * Feature graphic 1024×500 (Play Store). Bannière unique du projet = langue par
+   * défaut seulement; bannière localisée (`featureGraphicLocalized`) = poussée
+   * sur la langue de cette update.
+   */
   featureGraphic?: StoreScreenshot;
+  /** true quand `featureGraphic` est la bannière propre à cette langue. */
+  featureGraphicLocalized?: boolean;
   /**
    * URL de politique de confidentialité (App Store uniquement): écrite dans le
    * champ dédié d'App Information (`appInfoLocalizations.privacyPolicyUrl`), pas
@@ -107,3 +113,13 @@ export type PublishProgress = (
   ok?: boolean,
   error?: string
 ) => void;
+
+/**
+ * Feature graphics présents localement pour TOUT le projet (pas seulement le
+ * lot en cours): bannière unique du projet, et langues (codes app) qui ont leur
+ * bannière localisée. Sert au contrôle « langue par défaut sans bannière ».
+ */
+export type LocalFeatureGraphics = {
+  project: boolean;
+  localizedLocales: string[];
+};

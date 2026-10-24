@@ -24,6 +24,13 @@ import {
   type ScreenshotFrame,
   type SourceCaption,
 } from "@/lib/aso";
+import {
+  deleteLocaleFeatureGraphic,
+  generateLocaleFeatureGraphic,
+  hasLocaleFeatureGraphic,
+  isFeatureGraphicConfigured,
+  supportsLocalizedFeatureGraphic,
+} from "@/lib/aso/feature-graphic";
 import { translateWhatsNew } from "@/lib/aso/translate";
 import { mapWithConcurrency } from "@/lib/concurrency";
 import { MAX_FEATURE_LENGTH, MAX_FEATURES } from "@/lib/constants";
@@ -426,6 +433,12 @@ export async function deleteListing(input: {
 
   dbDeleteListing(project.id, locale);
 
+  try {
+    deleteLocaleFeatureGraphic(project.id, locale);
+  } catch {
+    // Fichiers orphelins toleres.
+  }
+
   for (const device of ["phone", "tablet"] as const) {
     const prefix =
       device === "tablet"
@@ -571,6 +584,17 @@ export async function generateProjectScreenshots(input: {
       ? project.target_locales
       : [project.source_locale];
     const existingListings = dbListListings(project.id);
+    const bannerConfigured =
+      project.store === "playstore" && isFeatureGraphicConfigured(project.id);
+    const listingByLocale = new Map(
+      existingListings.map(
+        (row) =>
+          [
+            String(row.locale),
+            { title: String(row.title ?? ""), shortDescription: String(row.short_description ?? "") },
+          ] as const
+      )
+    );
     const locales = resolveRequestedLocales(
       input.locales,
       allLocales,
@@ -631,6 +655,30 @@ export async function generateProjectScreenshots(input: {
           screenshots: frames,
           screenshots_tablet: tabletFrames,
         });
+
+        // Bannière localisée (Play Store), si le modèle et l'illustration sont
+        // configurés, que l'écriture de la langue est prise en charge et qu'elle
+        // n'existe pas encore: une bannière existante (peut-être éditée à la
+        // main) se gère depuis la carte Feature graphic. Non bloquant: une
+        // bannière en échec se relance depuis cette carte.
+        if (
+          bannerConfigured &&
+          supportsLocalizedFeatureGraphic(locale) &&
+          !hasLocaleFeatureGraphic(project.id, locale)
+        ) {
+          try {
+            await generateLocaleFeatureGraphic({
+              projectId: project.id,
+              sourceLocale: project.source_locale,
+              locale,
+              listing: listingByLocale.get(locale) ?? null,
+            });
+          } catch (e) {
+            console.error(
+              `[feature graphic] locale=${locale} FAILED: ${e instanceof Error ? e.message : e}`
+            );
+          }
+        }
 
         await pruneLocaleFrames(project, locale, {
           phone: frames.length,

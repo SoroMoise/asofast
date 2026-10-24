@@ -452,7 +452,7 @@ export function PublishCta({
               setConfirmPublish(false);
             }}
             label="Icon and feature graphic"
-            hint="512×512 icon and 1024×500 banner, shared by every language"
+            hint="512×512 icon and 1024×500 banner (localized banners go to their own language)"
           />
         ) : null}
       </fieldset>

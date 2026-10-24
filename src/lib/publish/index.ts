@@ -6,6 +6,10 @@ import {
   isStoreConnected as dbIsStoreConnected,
   saveStoreCredentials as dbSaveStoreCredentials,
 } from "@/lib/db";
+import {
+  localeFeatureGraphicDir,
+  localeFeatureGraphicPaths,
+} from "@/lib/aso/feature-graphic-layout";
 import { listFiles, readFile } from "@/lib/storage";
 import type { Generation, Listing, Project, StorePlatform } from "@/types";
 
@@ -16,6 +20,7 @@ import { FULL_SCOPE } from "./scope";
 import type {
   AppStoreCredentials,
   ListingMetadata,
+  LocalFeatureGraphics,
   PlayStoreCredentials,
   PublishProgress,
   PublishResult,
@@ -227,6 +232,27 @@ async function loadProjectFeatureGraphic(project: Project): Promise<StoreScreens
   return loadLocalFile(`${project.id}/feature-graphic`, (name) => name.startsWith("current."));
 }
 
+/** Bannière rendue pour cette langue (cf. lib/aso/feature-graphic), ou null. */
+async function loadLocaleFeatureGraphic(
+  project: Project,
+  locale: string
+): Promise<StoreScreenshot | null> {
+  const { image } = localeFeatureGraphicPaths(project.id, locale);
+  const slash = image.lastIndexOf("/");
+  const name = image.slice(slash + 1);
+  return loadLocalFile(image.slice(0, slash), (file) => file === name);
+}
+
+/** Bannières présentes pour tout le projet (cf. LocalFeatureGraphics). */
+export function listLocalFeatureGraphics(project: Project): LocalFeatureGraphics {
+  return {
+    project: listFiles(`${project.id}/feature-graphic`).some((f) => f.name.startsWith("current.")),
+    localizedLocales: listFiles(localeFeatureGraphicDir(project.id))
+      .filter((f) => f.name.endsWith(".jpg"))
+      .map((f) => f.name.slice(0, -".jpg".length)),
+  };
+}
+
 async function downloadFrameUrls(value: unknown): Promise<StoreScreenshot[]> {
   const frames = Array.isArray(value) ? (value as { url?: unknown }[]) : [];
   const entries = frames.map((f, i) => ({ url: f?.url, i }));
@@ -292,7 +318,17 @@ export async function buildUpdatesFromListings(
     }
 
     if (icon) update.icon = icon;
-    if (featureGraphic) update.featureGraphic = featureGraphic;
+    // Bannière localisée de la langue en priorité; sinon la bannière unique
+    // (que playstore.ts ne pousse que sur la langue par défaut de la fiche).
+    const localizedGraphic = wantsStoreAssets
+      ? await loadLocaleFeatureGraphic(project, listing.locale)
+      : null;
+    if (localizedGraphic) {
+      update.featureGraphic = localizedGraphic;
+      update.featureGraphicLocalized = true;
+    } else if (featureGraphic) {
+      update.featureGraphic = featureGraphic;
+    }
 
     if (
       update.metadata ||
@@ -359,6 +395,10 @@ export async function publishListings(
       opts?.onProgress
     );
   }
+  // Hors périmètre « store assets », aucune bannière ne partira: inventaire vide.
+  const localFeatureGraphics = (opts?.scope ?? FULL_SCOPE).storeAssets
+    ? listLocalFeatureGraphics(project)
+    : { project: false, localizedLocales: [] };
   return publishPlayStoreListings(
     creds as PlayStoreCredentials,
     project.store_identifier,
@@ -368,6 +408,7 @@ export async function publishListings(
       editId: opts?.editId,
       commit: opts?.commit,
       changesNotSentForReview: opts?.changesNotSentForReview,
+      localFeatureGraphics,
     }
   );
 }
