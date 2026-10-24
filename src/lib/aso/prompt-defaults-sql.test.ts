@@ -7,8 +7,10 @@ import { DEFAULTS } from "./prompt-defaults";
 // The prompts live in two places that must not drift: the embedded DEFAULTS
 // (runtime fallback) and the 0019 SQL seed (the editable DB rows). This locks
 // them together. aso_extract_keywords is excluded: 0009 seeds it (in French)
-// and 0019 does not touch it.
-const SEEDED = Object.keys(DEFAULTS).filter((k) => k !== "aso_extract_keywords");
+// and 0019 does not touch it. aso_translate_feature_graphic came after 0019 and
+// only exists as an embedded default.
+const NOT_IN_0019 = new Set(["aso_extract_keywords", "aso_translate_feature_graphic"]);
+const SEEDED = Object.keys(DEFAULTS).filter((k) => !NOT_IN_0019.has(k));
 const sql = readFileSync("db/migrations/0019_prompts_seed_all.sql", "utf8");
 const sqlEscape = (s: string) => s.replaceAll("'", "''");
 

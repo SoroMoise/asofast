@@ -25,7 +25,9 @@ import {
   type SourceCaption,
 } from "@/lib/aso";
 import {
+  deleteLocaleFeatureGraphic,
   generateLocaleFeatureGraphic,
+  hasLocaleFeatureGraphic,
   isFeatureGraphicConfigured,
 } from "@/lib/aso/feature-graphic";
 import { translateWhatsNew } from "@/lib/aso/translate";
@@ -430,6 +432,12 @@ export async function deleteListing(input: {
 
   dbDeleteListing(project.id, locale);
 
+  try {
+    deleteLocaleFeatureGraphic(project.id, locale);
+  } catch {
+    // Fichiers orphelins toleres.
+  }
+
   for (const device of ["phone", "tablet"] as const) {
     const prefix =
       device === "tablet"
@@ -642,9 +650,10 @@ export async function generateProjectScreenshots(input: {
         });
 
         // Bannière localisée (Play Store), si le modèle et l'illustration sont
-        // configurés. Non bloquant: une bannière en échec se relance depuis la
-        // carte Feature graphic sans refaire les captures.
-        if (bannerConfigured) {
+        // configurés et qu'elle n'existe pas encore: une bannière existante
+        // (peut-être éditée à la main) se gère depuis la carte Feature graphic.
+        // Non bloquant: une bannière en échec se relance depuis cette carte.
+        if (bannerConfigured && !hasLocaleFeatureGraphic(project.id, locale)) {
           try {
             await generateLocaleFeatureGraphic({
               projectId: project.id,

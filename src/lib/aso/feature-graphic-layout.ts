@@ -26,11 +26,21 @@ export const MAX_BADGE_LENGTH = 32;
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
 
+/**
+ * Dossier des bannières rendues. Surtout PAS `aso/<locale>/`: le nettoyage des
+ * captures (removeStaleFrames, suppression des captures d'une langue) vide ce
+ * dossier de tout ce qui n'est pas une frame `NN.jpg`.
+ */
+export function localeFeatureGraphicDir(projectId: string): string {
+  return `${projectId}/feature-graphic/locales`;
+}
+
 /** Emplacements storage de la bannière rendue d'une langue (et de ses textes). */
 export function localeFeatureGraphicPaths(projectId: string, locale: string) {
+  const dir = localeFeatureGraphicDir(projectId);
   return {
-    image: `${projectId}/aso/${locale}/feature-graphic.jpg`,
-    texts: `${projectId}/aso/${locale}/feature-graphic.json`,
+    image: `${dir}/${locale}.jpg`,
+    texts: `${dir}/${locale}.json`,
   };
 }
 
@@ -61,6 +71,14 @@ export type FeatureGraphicTexts = {
   badges: string[];
 };
 
+/** Ce qui est enregistré à côté de la bannière rendue d'une langue. */
+export type StoredFeatureGraphic = FeatureGraphicTexts & {
+  /** Textes édités à la main: conservés tant qu'on ne revient pas à l'automatique. */
+  manual: boolean;
+  /** Empreinte des entrées du rendu (cf. featureGraphicFingerprintSource). */
+  fingerprint: string;
+};
+
 export const DEFAULT_FEATURE_GRAPHIC_TEMPLATE: FeatureGraphicTemplate = {
   useListingTitle: true,
   headline: "",
@@ -72,8 +90,19 @@ export const DEFAULT_FEATURE_GRAPHIC_TEMPLATE: FeatureGraphicTemplate = {
   backgroundGradientTo: "#7c3aed",
 };
 
+/**
+ * Coupe à `max` caractères sans trancher un mot: au dernier espace si la coupe
+ * garde au moins la moitié du texte, sinon net (CJK, mot unique très long).
+ */
+export function truncateAtWord(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max + 1);
+  const space = cut.lastIndexOf(" ");
+  return (space >= max / 2 ? cut.slice(0, space) : text.slice(0, max)).replace(/[\s,;:–-]+$/, "");
+}
+
 function cleanText(value: unknown, max: number): string {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
+  return typeof value === "string" ? truncateAtWord(value.replace(/\s+/g, " ").trim(), max) : "";
 }
 
 /** Valide/normalise un modèle venant du client ou du disque. Jamais de throw. */
@@ -114,6 +143,40 @@ export function sanitizeFeatureGraphicTexts(raw: unknown): FeatureGraphicTexts {
       .filter(Boolean)
       .slice(0, MAX_BADGES),
   };
+}
+
+/** Relit le fichier .json d'une langue (anciens fichiers: textes seuls). */
+export function sanitizeStoredFeatureGraphic(raw: unknown): StoredFeatureGraphic {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  return {
+    ...sanitizeFeatureGraphicTexts(r),
+    manual: r.manual === true,
+    fingerprint: typeof r.fingerprint === "string" ? r.fingerprint : "",
+  };
+}
+
+/**
+ * Chaîne à hacher pour savoir si une bannière est périmée: mise en page,
+ * illustration et, pour des textes automatiques, ce dont ils dérivent (textes
+ * du modèle, titre de la fiche). Des textes manuels ne périment pas quand le
+ * texte du modèle change: seule la mise en page compte pour eux.
+ */
+export function featureGraphicFingerprintSource(opts: {
+  template: FeatureGraphicTemplate;
+  artHash: string;
+  manual: boolean;
+  listingTitle?: string | null;
+}): string {
+  const { template: t, artHash, manual } = opts;
+  const layout = [t.textSide, t.textWidth, t.textColor, t.backgroundColor, t.backgroundGradientTo];
+  const text = manual
+    ? null
+    : {
+        useListingTitle: t.useListingTitle,
+        headline: t.useListingTitle ? (opts.listingTitle ?? "").trim() : t.headline,
+        badges: t.badges,
+      };
+  return JSON.stringify({ v: 1, layout, artHash, text });
 }
 
 /** Le modèle a-t-il quelque chose à écrire ? */
@@ -215,22 +278,25 @@ export function fitHeadlineFontSize(opts: {
   return min;
 }
 
+/** Padding horizontal (2 × 16) + bordure (2 × 1,5) d'un badge, en px. */
+export const BADGE_CHROME_X = 2 * 16 + 3;
+/** Marge après CHAQUE badge (dernier compris), en px: cf. le rendu. */
+export const BADGE_GAP = 10;
+
 /** Taille commune des badges pour qu'ils tiennent sur au plus deux rangées. */
 export function fitBadgeFontSize(badges: string[], maxWidth: number): number {
-  const PAD = 2 * 16; // padding horizontal d'un badge en px
-  const GAP = 10;
   for (let size = 20; size >= 13; size--) {
     let rows = 1;
     let current = 0;
     let fits = true;
     for (const badge of badges) {
-      const w = tokenWidth(badge) * size + PAD;
+      // Le moteur compte la marge de chaque badge dans la largeur de la rangée.
+      const w = tokenWidth(badge) * size + BADGE_CHROME_X + BADGE_GAP;
       if (w > maxWidth) {
         fits = false;
         break;
       }
-      const add = current === 0 ? w : GAP + w;
-      if (current + add <= maxWidth) current += add;
+      if (current + w <= maxWidth) current += w;
       else {
         rows++;
         current = w;

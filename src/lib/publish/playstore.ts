@@ -40,6 +40,15 @@ const GLOBAL_LIMIT = 3;
 const PLAY_LANGUAGE_OVERRIDES: Record<string, string> = {
   he: "iw-IL",
 };
+/**
+ * Le feature graphic de cette update part-il sur sa langue ? La bannière
+ * localisée va sur SA langue; la bannière unique du projet seulement sur la
+ * langue par défaut de la fiche (les autres langues en héritent côté Play).
+ */
+export function pushesFeatureGraphic(update: StoreUpdate, isDefaultLanguage: boolean): boolean {
+  return Boolean(update.featureGraphic) && (update.featureGraphicLocalized === true || isDefaultLanguage);
+}
+
 function toPlayLanguage(code: string): string {
   return PLAY_LANGUAGE_OVERRIDES[code] ?? code;
 }
@@ -364,10 +373,8 @@ export async function publishPlayStoreListings(
         );
       }
 
-      // Feature graphic: la bannière localisée va sur SA langue; la bannière
-      // unique du projet uniquement sur la langue par défaut (les autres langues
-      // en héritent côté Play).
-      if (update.featureGraphic && (update.featureGraphicLocalized || isDefaultLocale(lang))) {
+      // Feature graphic: cf. pushesFeatureGraphic.
+      if (update.featureGraphic && pushesFeatureGraphic(update, isDefaultLocale(lang))) {
         const fg = update.featureGraphic;
         imageTasks.push(
           (async () => {

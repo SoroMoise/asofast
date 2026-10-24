@@ -1,12 +1,13 @@
 /**
- * Bannière (feature graphic) localisée — partie serveur: stockage, traduction
- * et rendu satori. La mise en page pure est dans feature-graphic-layout.ts.
+ * Bannière (feature graphic) localisée — rendu satori et enregistrement. Le
+ * stockage, la traduction et l'empreinte sont dans feature-graphic-store.ts, la
+ * mise en page pure dans feature-graphic-layout.ts.
  *
  * Stockage (data/uploads):
  *   <projectId>/feature-graphic/art.<png|jpg>        illustration SANS texte
  *   <projectId>/feature-graphic/template.json        modèle (langue source)
- *   <projectId>/aso/<locale>/feature-graphic.jpg     bannière rendue par langue
- *   <projectId>/aso/<locale>/feature-graphic.json    textes rendus pour la langue
+ *   <projectId>/feature-graphic/locales/<locale>.jpg   bannière rendue par langue
+ *   <projectId>/feature-graphic/locales/<locale>.json  textes rendus + empreinte
  * L'ancien `feature-graphic/current.*` (bannière unique) reste le repli de la
  * langue par défaut quand aucune bannière localisée n'existe.
  */
@@ -15,9 +16,10 @@ import satori from "satori";
 import sharp from "sharp";
 
 import { loadFonts, loadScriptFonts } from "@/lib/ai/generation/screenshot/fonts";
-import { listFiles, readFile, saveFile } from "@/lib/storage";
+import { saveFile } from "@/lib/storage";
 
 import {
+  BADGE_GAP,
   FEATURE_GRAPHIC_HEIGHT as H,
   FEATURE_GRAPHIC_WIDTH as W,
   fitBadgeFontSize,
@@ -27,97 +29,27 @@ import {
   isRtlLocale,
   localeFeatureGraphicPaths,
   SAFE_MARGIN_X,
-  sanitizeFeatureGraphicTemplate,
-  sanitizeFeatureGraphicTexts,
   type FeatureGraphicTemplate,
   type FeatureGraphicTexts,
+  type StoredFeatureGraphic,
 } from "./feature-graphic-layout";
-import { translateCaptions } from "./screenshots";
+import {
+  featureGraphicFingerprint,
+  loadFeatureGraphicContext,
+  resolveLocaleFeatureGraphicTexts,
+  type FeatureGraphicContext,
+  type LocaleFeatureGraphic,
+} from "./feature-graphic-store";
 
 export * from "./feature-graphic-layout";
+export * from "./feature-graphic-store";
 
 const JPEG_QUALITY = 90;
 // Texte toujours dans la zone de sécurité (recadrage horizontal du Play Store).
 const PAD_X = SAFE_MARGIN_X;
 const PAD_Y = 64;
-
-function templatePath(projectId: string): string {
-  return `${projectId}/feature-graphic/template.json`;
-}
-
-/** Modèle enregistré, ou null s'il n'a jamais été configuré. */
-export function readFeatureGraphicTemplate(projectId: string): FeatureGraphicTemplate | null {
-  try {
-    return sanitizeFeatureGraphicTemplate(JSON.parse(readFile(templatePath(projectId)).toString("utf8")));
-  } catch {
-    return null;
-  }
-}
-
-export function saveFeatureGraphicTemplate(projectId: string, raw: unknown): FeatureGraphicTemplate {
-  const tpl = sanitizeFeatureGraphicTemplate(raw);
-  saveFile(templatePath(projectId), Buffer.from(JSON.stringify(tpl, null, 2)));
-  return tpl;
-}
-
-/** Chemin storage de l'illustration, ou null. */
-export function findFeatureGraphicArt(projectId: string): string | null {
-  const file = listFiles(`${projectId}/feature-graphic`).find((f) => f.name.startsWith("art."));
-  return file?.path ?? null;
-}
-
-/** La génération localisée est-elle configurée pour ce projet ? */
-export function isFeatureGraphicConfigured(projectId: string): boolean {
-  return readFeatureGraphicTemplate(projectId) !== null && findFeatureGraphicArt(projectId) !== null;
-}
-
-export function readLocaleFeatureGraphicTexts(
-  projectId: string,
-  locale: string
-): FeatureGraphicTexts | null {
-  try {
-    const raw = readFile(localeFeatureGraphicPaths(projectId, locale).texts).toString("utf8");
-    return sanitizeFeatureGraphicTexts(JSON.parse(raw));
-  } catch {
-    return null;
-  }
-}
-
-export function hasLocaleFeatureGraphic(projectId: string, locale: string): boolean {
-  return listFiles(`${projectId}/aso/${locale}`).some((f) => f.name === "feature-graphic.jpg");
-}
-
-/**
- * Textes de la bannière pour une langue: titre = titre de la fiche (déjà
- * localisé) ou titre du modèle traduit; badges traduits. La langue source n'est
- * jamais traduite. Un échec de traduction retombe sur la langue source (même
- * contrat que translateCaptions): une langue n'est jamais bloquée pour ça.
- */
-export async function resolveFeatureGraphicTexts(opts: {
-  template: FeatureGraphicTemplate;
-  sourceLocale: string;
-  locale: string;
-  listingTitle?: string | null;
-}): Promise<FeatureGraphicTexts> {
-  const { template, sourceLocale, locale } = opts;
-  const items = [
-    ...(template.useListingTitle || !template.headline ? [] : [template.headline]),
-    ...template.badges,
-  ];
-  const translated =
-    items.length === 0 ? [] : await translateCaptions(items, sourceLocale, locale);
-  const headline = template.useListingTitle
-    ? (opts.listingTitle ?? "").trim()
-    : template.headline
-      ? (translated[0] ?? template.headline)
-      : "";
-  const badges = translated.slice(template.useListingTitle || !template.headline ? 0 : 1);
-  return sanitizeFeatureGraphicTexts({ headline, badges });
-}
-
-function contentTypeFor(path: string): string {
-  return /\.jpe?g$/i.test(path) ? "image/jpeg" : "image/png";
-}
+// Les largeurs de glyphes sont estimées (charAdvance): marge contre le débordement.
+const WIDTH_SAFETY = 0.94;
 
 /** Compose une bannière 1024×500 (JPEG, sans alpha). */
 export async function renderFeatureGraphic(opts: {
@@ -137,13 +69,14 @@ export async function renderFeatureGraphic(opts: {
 
   const rtl = isRtlLocale(locale);
   const colWidth = Math.round(W * template.textWidth) - PAD_X;
-  const badgeSize = texts.badges.length > 0 ? fitBadgeFontSize(texts.badges, colWidth) : 0;
+  const fitWidth = Math.floor(colWidth * WIDTH_SAFETY);
+  const badgeSize = texts.badges.length > 0 ? fitBadgeFontSize(texts.badges, fitWidth) : 0;
   // Réserve verticale des badges: au plus deux rangées (fitBadgeFontSize).
   const badgeReserve = texts.badges.length > 0 ? Math.round((badgeSize + 18) * 2 + 10 + 24) : 0;
   const headlineSize = texts.headline
     ? fitHeadlineFontSize({
         text: texts.headline,
-        maxWidth: colWidth,
+        maxWidth: fitWidth,
         maxHeight: H - 2 * PAD_Y - badgeReserve,
       })
     : 0;
@@ -207,7 +140,9 @@ export async function renderFeatureGraphic(opts: {
             style={{
               display: "flex",
               flexWrap: "wrap",
-              justifyContent: align,
+              // RTL: premier badge à droite (row-reverse part du bord droit).
+              flexDirection: rtl ? "row-reverse" : "row",
+              justifyContent: "flex-start",
               marginTop: texts.headline ? 24 : 0,
             }}
           >
@@ -216,9 +151,9 @@ export async function renderFeatureGraphic(opts: {
                 key={i}
                 style={{
                   display: "flex",
-                  marginRight: rtl ? 0 : 10,
-                  marginLeft: rtl ? 10 : 0,
-                  marginBottom: 10,
+                  marginRight: rtl ? 0 : BADGE_GAP,
+                  marginLeft: rtl ? BADGE_GAP : 0,
+                  marginBottom: BADGE_GAP,
                   padding: "8px 16px",
                   borderRadius: 999,
                   fontSize: badgeSize,
@@ -266,42 +201,48 @@ export async function renderFeatureGraphic(opts: {
     .toBuffer();
 }
 
-export type LocaleFeatureGraphic = {
-  locale: string;
-  url: string;
-  texts: FeatureGraphicTexts;
-};
+/** Rend et enregistre la bannière d'une langue avec des textes déjà résolus. */
+export async function saveLocaleFeatureGraphic(
+  ctx: FeatureGraphicContext,
+  opts: { locale: string; texts: FeatureGraphicTexts; manual: boolean; listingTitle?: string | null }
+): Promise<LocaleFeatureGraphic> {
+  const jpeg = await renderFeatureGraphic({
+    template: ctx.template,
+    texts: opts.texts,
+    artDataUrl: ctx.artDataUrl,
+    locale: opts.locale,
+  });
+  const stored: StoredFeatureGraphic = {
+    ...opts.texts,
+    manual: opts.manual,
+    fingerprint: featureGraphicFingerprint(ctx, opts.manual, opts.listingTitle),
+  };
+  const paths = localeFeatureGraphicPaths(ctx.projectId, opts.locale);
+  saveFile(paths.image, jpeg);
+  saveFile(paths.texts, Buffer.from(JSON.stringify(stored, null, 2)));
+  return {
+    locale: opts.locale,
+    url: `/api/files/${paths.image}?v=${Date.now()}`,
+    texts: opts.texts,
+    manual: opts.manual,
+  };
+}
 
-/**
- * Rend et enregistre la bannière d'une langue. `texts` fourni = textes édités à
- * la main (aucune traduction); sinon ils sont résolus depuis le modèle.
- */
+/** Résout les textes puis rend et enregistre la bannière d'une langue. */
 export async function generateLocaleFeatureGraphic(opts: {
   projectId: string;
   sourceLocale: string;
   locale: string;
   listingTitle?: string | null;
   texts?: FeatureGraphicTexts;
+  resetManual?: boolean;
 }): Promise<LocaleFeatureGraphic> {
-  const template = readFeatureGraphicTemplate(opts.projectId);
-  if (!template) throw new Error("Banner template not configured.");
-  const artPath = findFeatureGraphicArt(opts.projectId);
-  if (!artPath) throw new Error("Banner illustration missing: upload it first.");
-
-  const texts = opts.texts
-    ? sanitizeFeatureGraphicTexts(opts.texts)
-    : await resolveFeatureGraphicTexts({
-        template,
-        sourceLocale: opts.sourceLocale,
-        locale: opts.locale,
-        listingTitle: opts.listingTitle,
-      });
-
-  const artDataUrl = `data:${contentTypeFor(artPath)};base64,${readFile(artPath).toString("base64")}`;
-  const jpeg = await renderFeatureGraphic({ template, texts, artDataUrl, locale: opts.locale });
-
-  const paths = localeFeatureGraphicPaths(opts.projectId, opts.locale);
-  saveFile(paths.image, jpeg);
-  saveFile(paths.texts, Buffer.from(JSON.stringify(texts, null, 2)));
-  return { locale: opts.locale, url: `/api/files/${paths.image}?v=${Date.now()}`, texts };
+  const ctx = loadFeatureGraphicContext(opts.projectId);
+  const { texts, manual } = await resolveLocaleFeatureGraphicTexts(ctx, opts);
+  return saveLocaleFeatureGraphic(ctx, {
+    locale: opts.locale,
+    texts,
+    manual,
+    listingTitle: opts.listingTitle,
+  });
 }

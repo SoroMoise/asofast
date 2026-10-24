@@ -21,7 +21,15 @@ import {
 import { compressImage } from "@/lib/images/compress";
 import { STORE_LOCALES } from "@/lib/locales";
 
-type LocaleState = { locale: string; url: string | null; texts: FeatureGraphicTexts | null };
+type LocaleState = {
+  locale: string;
+  url: string | null;
+  texts: FeatureGraphicTexts | null;
+  /** Textes édités à la main: conservés quand on régénère. */
+  manual: boolean;
+  /** Modèle, illustration ou titre de la fiche changés depuis le rendu. */
+  stale: boolean;
+};
 type ApiState = {
   configured: boolean;
   template: FeatureGraphicTemplate;
@@ -30,7 +38,7 @@ type ApiState = {
   locales: LocaleState[];
 };
 type GenerateResult = {
-  done?: { locale: string; url: string; texts: FeatureGraphicTexts }[];
+  done?: { locale: string; url: string; texts: FeatureGraphicTexts; manual: boolean }[];
   failed?: { locale: string; error: string }[];
   error?: string;
 };
@@ -88,7 +96,19 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
     headline: "",
     badges: padBadges([]),
   });
+  // Aperçu NON enregistré (modèle du formulaire), en object URL.
+  const [draft, setDraft] = React.useState<{ locale: string; url: string } | null>(null);
+  // Dernière couleur de dégradé, pour la retrouver après avoir décoché/recoché.
+  const [lastGradient, setLastGradient] = React.useState("#7c3aed");
   const blocked = busy || pageBusy;
+
+  const clearDraft = React.useCallback(() => {
+    setDraft((current) => {
+      if (current) URL.revokeObjectURL(current.url);
+      return null;
+    });
+  }, []);
+  React.useEffect(() => clearDraft, [clearDraft]);
 
   const refresh = React.useCallback(async () => {
     const res = await fetch(api, { cache: "no-store" });
@@ -96,6 +116,7 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
     const data = (await res.json()) as ApiState;
     setState(data);
     setTpl((current) => current ?? data.template);
+    if (data.template.backgroundGradientTo) setLastGradient(data.template.backgroundGradientTo);
     setPreview((current) => current || data.sourceLocale);
   }, [api]);
 
@@ -148,25 +169,30 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
         fit: { width: FEATURE_GRAPHIC_WIDTH, height: FEATURE_GRAPHIC_HEIGHT },
         allowAlpha: true,
       });
-      const list = await fetch(`/api/files/${projectId}/feature-graphic`).then((r) =>
-        r.ok ? (r.json() as Promise<{ files?: { name: string; path: string }[] }>) : { files: [] }
-      );
-      for (const f of (list.files ?? []).filter((f) => f.name.startsWith("art."))) {
-        await fetch(`/api/files/${f.path}`, { method: "DELETE" });
-      }
-      const up = await fetch(`/api/files/${projectId}/feature-graphic/art.${out.ext}`, {
+      // Envoi d'abord: un échec laisse l'ancienne illustration en place.
+      const name = `art.${out.ext}`;
+      const up = await fetch(`/api/files/${projectId}/feature-graphic/${name}`, {
         method: "POST",
         body: out.blob,
         headers: { "Content-Type": out.blob.type || "application/octet-stream" },
       });
       if (!up.ok) throw new Error("Upload failed.");
-      setMessage("Illustration saved. Generate the banners to apply it.");
+      // Puis retrait de l'ancienne si son extension diffère (art.png ↔ art.jpg).
+      const list = await fetch(`/api/files/${projectId}/feature-graphic`).then((r) =>
+        r.ok ? (r.json() as Promise<{ files?: { name: string; path: string }[] }>) : { files: [] }
+      );
+      for (const f of (list.files ?? []).filter((f) => f.name.startsWith("art.") && f.name !== name)) {
+        await fetch(`/api/files/${f.path}`, { method: "DELETE" });
+      }
+      clearDraft();
+      setMessage("Illustration saved. Regenerate the outdated banners to apply it.");
     });
   }
 
   async function generate(locales: string[]) {
     await run(async () => {
       await saveTemplate();
+      clearDraft();
       setFailed([]);
       setProgress({ done: 0, total: locales.length });
       const allFailed: { locale: string; error: string }[] = [];
@@ -191,21 +217,52 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
     });
   }
 
-  async function saveLocaleTexts() {
+  async function rerenderLocale(mode: "manual" | "automatic") {
     if (!previewState) return;
+    const locale = previewState.locale;
     await run(async () => {
       const res = await fetch(api, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          locales: [previewState.locale],
-          texts: { headline: edit.headline, badges: edit.badges.filter(Boolean) },
-        }),
+        body: JSON.stringify(
+          mode === "manual"
+            ? {
+                locales: [locale],
+                texts: { headline: edit.headline, badges: edit.badges.filter(Boolean) },
+              }
+            : { locales: [locale], resetManual: true }
+        ),
       });
       const data = (await res.json()) as GenerateResult;
       if (!res.ok) throw new Error(data.error ?? "Re-render failed.");
       if (data.failed?.length) throw new Error(data.failed[0].error);
-      setMessage(`Banner re-rendered for ${previewState.locale}.`);
+      clearDraft();
+      setMessage(
+        mode === "manual"
+          ? `Banner re-rendered for ${locale}.`
+          : `Back to the automatic text for ${locale}.`
+      );
+    });
+  }
+
+  async function previewDraft() {
+    if (!tpl) return;
+    const locale = preview;
+    await run(async () => {
+      const res = await fetch(`${api}?preview=1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ template: { ...tpl, badges: tpl.badges.filter(Boolean) }, locale }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(data.error ?? "Preview failed.");
+      }
+      const url = URL.createObjectURL(await res.blob());
+      setDraft((current) => {
+        if (current) URL.revokeObjectURL(current.url);
+        return { locale, url };
+      });
     });
   }
 
@@ -215,6 +272,9 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
 
   const allLocales = state.locales.map((l) => l.locale);
   const missing = state.locales.filter((l) => !l.url).map((l) => l.locale);
+  const stale = state.locales.filter((l) => l.url && l.stale).map((l) => l.locale);
+  const manualCount = state.locales.filter((l) => l.url && l.manual).length;
+  const shownDraft = draft && draft.locale === preview ? draft : null;
   const ready = Boolean(state.art);
   const setT = (patch: Partial<FeatureGraphicTemplate>) => setTpl({ ...tpl, ...patch });
 
@@ -349,9 +409,12 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
             Gradient to
             <input
               type="color"
-              value={tpl.backgroundGradientTo ?? tpl.backgroundColor}
+              value={tpl.backgroundGradientTo ?? lastGradient}
               disabled={blocked || tpl.backgroundGradientTo === null}
-              onChange={(e) => setT({ backgroundGradientTo: e.target.value })}
+              onChange={(e) => {
+                setLastGradient(e.target.value);
+                setT({ backgroundGradientTo: e.target.value });
+              }}
             />
           </label>
           <label className="flex items-center gap-1 text-xs">
@@ -359,7 +422,7 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
               type="checkbox"
               checked={tpl.backgroundGradientTo !== null}
               disabled={blocked}
-              onChange={(e) => setT({ backgroundGradientTo: e.target.checked ? "#7c3aed" : null })}
+              onChange={(e) => setT({ backgroundGradientTo: e.target.checked ? lastGradient : null })}
             />
             Gradient
           </label>
@@ -379,16 +442,27 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
             Only missing ({missing.length})
           </Button>
         ) : null}
+        {stale.length > 0 ? (
+          <Button type="button" variant="outline" size="sm" disabled={blocked || !ready} onClick={() => generate(stale)}>
+            Only outdated ({stale.length})
+          </Button>
+        ) : null}
       </div>
+      {manualCount > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {manualCount} language(s) have text edited by hand: regenerating keeps it (use &quot;Back to
+          automatic text&quot; on a language to re-translate it).
+        </p>
+      ) : null}
       {progress && busy ? (
         <p className="text-xs text-muted-foreground">
           {progress.done}/{progress.total} languages…
         </p>
       ) : null}
 
-      {state.locales.some((l) => l.url) ? (
+      {ready ? (
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Label htmlFor="fg-preview">Preview</Label>
             <select
               id="fg-preview"
@@ -399,11 +473,31 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
               {state.locales.map((l) => (
                 <option key={l.locale} value={l.locale}>
                   {LOCALE_LABELS.get(l.locale) ?? l.locale}
-                  {l.url ? "" : " (not generated)"}
+                  {!l.url ? " (not generated)" : l.stale ? " (outdated)" : ""}
                 </option>
               ))}
             </select>
+            <Button type="button" variant="outline" size="sm" disabled={blocked} onClick={previewDraft}>
+              Preview current settings
+            </Button>
           </div>
+          {shownDraft ? (
+            <div className="flex flex-col gap-1">
+              <p className="text-xs text-muted-foreground">
+                Unsaved preview of the current settings
+                {preview === state.sourceLocale ? "" : " (text translated on the fly)"}. Generate
+                the banners to keep it.
+              </p>
+              <SafeZone>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={shownDraft.url}
+                  alt={`Banner preview ${shownDraft.locale}`}
+                  className="w-full rounded-lg border border-dashed"
+                />
+              </SafeZone>
+            </div>
+          ) : null}
           {previewState?.url ? (
             <>
               <SafeZone>
@@ -438,10 +532,35 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
                   />
                 ))}
               </div>
-              <div>
-                <Button type="button" variant="outline" size="sm" disabled={blocked} onClick={saveLocaleTexts}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={blocked}
+                  onClick={() => rerenderLocale("manual")}
+                >
                   Save text &amp; re-render this language
                 </Button>
+                {previewState.manual ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={blocked}
+                    onClick={() => rerenderLocale("automatic")}
+                  >
+                    Back to automatic text
+                  </Button>
+                ) : null}
+                {previewState.manual ? (
+                  <span className="text-xs text-muted-foreground">Text edited by hand</span>
+                ) : null}
+                {previewState.stale ? (
+                  <span className="text-xs text-amber-600">
+                    Outdated: the template, illustration or listing title changed
+                  </span>
+                ) : null}
               </div>
             </>
           ) : (
