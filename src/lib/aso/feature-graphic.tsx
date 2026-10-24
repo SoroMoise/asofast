@@ -16,10 +16,12 @@ import satori from "satori";
 import sharp from "sharp";
 
 import { loadFonts, loadScriptFonts } from "@/lib/ai/generation/screenshot/fonts";
+import { measurerFor } from "@/lib/aso/font-metrics";
 import { saveFile } from "@/lib/storage";
 
 import {
   BADGE_GAP,
+  charAdvance,
   FEATURE_GRAPHIC_HEIGHT as H,
   FEATURE_GRAPHIC_WIDTH as W,
   fitBadgeFontSize,
@@ -28,7 +30,7 @@ import {
   isLightColor,
   isRtlLocale,
   localeFeatureGraphicPaths,
-  SAFE_MARGIN_X,
+  textColumnBox,
   type FeatureGraphicTemplate,
   type FeatureGraphicTexts,
   type ListingHeadlineTexts,
@@ -42,15 +44,14 @@ import {
   type LocaleFeatureGraphic,
 } from "./feature-graphic-store";
 
+export * from "./feature-graphic-contrast";
 export * from "./feature-graphic-layout";
 export * from "./feature-graphic-store";
 
 const JPEG_QUALITY = 90;
-// Texte toujours dans la zone de sécurité (recadrage horizontal du Play Store).
-const PAD_X = SAFE_MARGIN_X;
-const PAD_Y = 64;
-// Les largeurs de glyphes sont estimées (charAdvance): marge contre le débordement.
-const WIDTH_SAFETY = 0.94;
+// Largeurs lues dans les polices, mais sans crénage ni mise en forme
+// contextuelle (arabe): petite marge contre le débordement.
+const WIDTH_SAFETY = 0.97;
 
 /** Compose une bannière 1024×500 (JPEG, sans alpha). */
 export async function renderFeatureGraphic(opts: {
@@ -69,16 +70,23 @@ export async function renderFeatureGraphic(opts: {
   }
 
   const rtl = isRtlLocale(locale);
-  const colWidth = Math.round(W * template.textWidth) - PAD_X;
+  const column = textColumnBox(template);
+  const colWidth = column.width;
   const fitWidth = Math.floor(colWidth * WIDTH_SAFETY);
-  const badgeSize = texts.badges.length > 0 ? fitBadgeFontSize(texts.badges, fitWidth) : 0;
+  // Même ordre de repli que satori: Poppins de la graisse utilisée, puis script.
+  const scriptData = script.fonts.map((f) => f.data);
+  const measureHeadline = measurerFor([fonts.bold, ...scriptData], charAdvance);
+  const measureBadge = measurerFor([fonts.semibold, ...scriptData], charAdvance);
+  const badgeSize =
+    texts.badges.length > 0 ? fitBadgeFontSize(texts.badges, fitWidth, measureBadge) : 0;
   // Réserve verticale des badges: au plus deux rangées (fitBadgeFontSize).
   const badgeReserve = texts.badges.length > 0 ? Math.round((badgeSize + 18) * 2 + 10 + 24) : 0;
   const headlineSize = texts.headline
     ? fitHeadlineFontSize({
         text: texts.headline,
         maxWidth: fitWidth,
-        maxHeight: H - 2 * PAD_Y - badgeReserve,
+        maxHeight: column.height - badgeReserve,
+        measure: measureHeadline,
       })
     : 0;
 
@@ -112,7 +120,8 @@ export async function renderFeatureGraphic(opts: {
           position: "absolute",
           top: 0,
           bottom: 0,
-          ...(template.textSide === "left" ? { left: PAD_X } : { right: PAD_X }),
+          // Colonne dans la zone de sécurité (recadrage horizontal du Play Store).
+          left: column.left,
           width: colWidth,
           display: "flex",
           flexDirection: "column",
