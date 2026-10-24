@@ -31,6 +31,7 @@ import {
   SAFE_MARGIN_X,
   type FeatureGraphicTemplate,
   type FeatureGraphicTexts,
+  type ListingHeadlineTexts,
   type StoredFeatureGraphic,
 } from "./feature-graphic-layout";
 import {
@@ -204,7 +205,12 @@ export async function renderFeatureGraphic(opts: {
 /** Rend et enregistre la bannière d'une langue avec des textes déjà résolus. */
 export async function saveLocaleFeatureGraphic(
   ctx: FeatureGraphicContext,
-  opts: { locale: string; texts: FeatureGraphicTexts; manual: boolean; listingTitle?: string | null }
+  opts: {
+    locale: string;
+    texts: FeatureGraphicTexts;
+    manual: boolean;
+    listing?: ListingHeadlineTexts | null;
+  }
 ): Promise<LocaleFeatureGraphic> {
   const jpeg = await renderFeatureGraphic({
     template: ctx.template,
@@ -215,7 +221,7 @@ export async function saveLocaleFeatureGraphic(
   const stored: StoredFeatureGraphic = {
     ...opts.texts,
     manual: opts.manual,
-    fingerprint: featureGraphicFingerprint(ctx, opts.manual, opts.listingTitle),
+    fingerprint: featureGraphicFingerprint(ctx, opts.manual, opts.listing),
   };
   const paths = localeFeatureGraphicPaths(ctx.projectId, opts.locale);
   saveFile(paths.image, jpeg);
@@ -233,7 +239,7 @@ export async function generateLocaleFeatureGraphic(opts: {
   projectId: string;
   sourceLocale: string;
   locale: string;
-  listingTitle?: string | null;
+  listing?: ListingHeadlineTexts | null;
   texts?: FeatureGraphicTexts;
   resetManual?: boolean;
 }): Promise<LocaleFeatureGraphic> {
@@ -243,6 +249,6 @@ export async function generateLocaleFeatureGraphic(opts: {
     locale: opts.locale,
     texts,
     manual,
-    listingTitle: opts.listingTitle,
+    listing: opts.listing,
   });
 }

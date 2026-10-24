@@ -65,7 +65,7 @@ beforeEach(() => {
   store.set(`${P}/feature-graphic/art.png`, Buffer.from("art-v1"));
   saveFeatureGraphicTemplate(P, {
     ...DEFAULT_FEATURE_GRAPHIC_TEMPLATE,
-    useListingTitle: false,
+    headlineSource: "custom",
     headline: "Convert currencies offline",
     badges: ["Works offline", "Live rates"],
   });
@@ -141,14 +141,21 @@ describe("resolveLocaleFeatureGraphicTexts", () => {
     expect(reset).toEqual({ texts: { headline: "Auto", badges: ["A", "B"] }, manual: false });
   });
 
-  it("uses the listing title as is when the template says so", async () => {
-    const ctx = loadFeatureGraphicContext(P, { ...DEFAULT_FEATURE_GRAPHIC_TEMPLATE, useListingTitle: true });
-    const out = await resolveLocaleFeatureGraphicTexts(ctx, {
-      sourceLocale: "en-US",
-      locale: "en-US",
-      listingTitle: "  My App: Currency  ",
-    });
-    expect(out.texts.headline).toBe("My App: Currency");
+  it("uses the listing field as is (no translation) when the template says so", async () => {
+    const listing = { title: "  My App: Currency  ", shortDescription: "Convertisseur hors ligne" };
+    for (const [headlineSource, expected] of [
+      ["listingTitle", "My App: Currency"],
+      ["shortDescription", "Convertisseur hors ligne"],
+    ] as const) {
+      const ctx = loadFeatureGraphicContext(P, { ...DEFAULT_FEATURE_GRAPHIC_TEMPLATE, headlineSource });
+      const out = await resolveLocaleFeatureGraphicTexts(ctx, {
+        sourceLocale: "en-US",
+        locale: "fr-FR",
+        listing,
+      });
+      expect(out.texts.headline).toBe(expected);
+    }
+    expect(completeJSON).not.toHaveBeenCalled();
   });
 });
 

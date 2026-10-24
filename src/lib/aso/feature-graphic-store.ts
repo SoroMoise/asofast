@@ -14,12 +14,14 @@ import {
   localeFeatureGraphicDir,
   localeFeatureGraphicPaths,
   MAX_BADGE_LENGTH,
+  listingHeadline,
   MAX_HEADLINE_LENGTH,
   sanitizeFeatureGraphicTemplate,
   sanitizeFeatureGraphicTexts,
   sanitizeStoredFeatureGraphic,
   type FeatureGraphicTemplate,
   type FeatureGraphicTexts,
+  type ListingHeadlineTexts,
   type StoredFeatureGraphic,
 } from "./feature-graphic-layout";
 
@@ -127,15 +129,16 @@ export async function resolveFeatureGraphicTexts(opts: {
   template: FeatureGraphicTemplate;
   sourceLocale: string;
   locale: string;
-  listingTitle?: string | null;
+  listing?: ListingHeadlineTexts | null;
 }): Promise<FeatureGraphicTexts> {
   const { template, sourceLocale, locale } = opts;
+  const custom = template.headlineSource === "custom";
   const translated = await translateFeatureGraphicTexts(
-    { headline: template.useListingTitle ? "" : template.headline, badges: template.badges },
+    { headline: custom ? template.headline : "", badges: template.badges },
     sourceLocale,
     locale
   );
-  const headline = template.useListingTitle ? (opts.listingTitle ?? "").trim() : translated.headline;
+  const headline = custom ? translated.headline : listingHeadline(template, opts.listing);
   return sanitizeFeatureGraphicTexts({ headline, badges: translated.badges });
 }
 
@@ -178,13 +181,13 @@ export function loadFeatureGraphicContext(
 export function featureGraphicFingerprint(
   ctx: FeatureGraphicContext,
   manual: boolean,
-  listingTitle?: string | null
+  listing?: ListingHeadlineTexts | null
 ): string {
   const source = featureGraphicFingerprintSource({
     template: ctx.template,
     artHash: ctx.artHash,
     manual,
-    listingTitle,
+    listing,
   });
   return createHash("sha256").update(source).digest("hex").slice(0, 16);
 }
@@ -193,14 +196,14 @@ export function featureGraphicFingerprint(
 export function localeFeatureGraphicStatus(
   ctx: FeatureGraphicContext,
   locale: string,
-  listingTitle?: string | null
+  listing?: ListingHeadlineTexts | null
 ): { exists: boolean; stale: boolean; stored: StoredFeatureGraphic | null } {
   if (!hasLocaleFeatureGraphic(ctx.projectId, locale)) {
     return { exists: false, stale: false, stored: null };
   }
   const stored = readLocaleFeatureGraphic(ctx.projectId, locale);
   const stale =
-    !stored || stored.fingerprint !== featureGraphicFingerprint(ctx, stored.manual, listingTitle);
+    !stored || stored.fingerprint !== featureGraphicFingerprint(ctx, stored.manual, listing);
   return { exists: true, stale, stored };
 }
 
@@ -214,7 +217,7 @@ export async function resolveLocaleFeatureGraphicTexts(
   opts: {
     sourceLocale: string;
     locale: string;
-    listingTitle?: string | null;
+    listing?: ListingHeadlineTexts | null;
     texts?: FeatureGraphicTexts;
     resetManual?: boolean;
   }
@@ -230,7 +233,7 @@ export async function resolveLocaleFeatureGraphicTexts(
     template: ctx.template,
     sourceLocale: opts.sourceLocale,
     locale: opts.locale,
-    listingTitle: opts.listingTitle,
+    listing: opts.listing,
   });
   return { texts, manual: false };
 }

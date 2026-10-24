@@ -9,11 +9,13 @@ import {
   isLightColor,
   isRtlLocale,
   lineCount,
+  listingHeadline,
   localeFeatureGraphicPaths,
   SAFE_MARGIN_X,
   sanitizeFeatureGraphicTemplate,
   sanitizeFeatureGraphicTexts,
   sanitizeStoredFeatureGraphic,
+  supportsLocalizedFeatureGraphic,
   templateHasText,
   truncateAtWord,
 } from "./feature-graphic-layout";
@@ -47,8 +49,30 @@ describe("sanitizeFeatureGraphicTemplate", () => {
   });
 
   it("knows when there is something to write", () => {
-    expect(templateHasText({ ...DEFAULT_FEATURE_GRAPHIC_TEMPLATE, useListingTitle: false })).toBe(false);
-    expect(templateHasText(DEFAULT_FEATURE_GRAPHIC_TEMPLATE)).toBe(true);
+    expect(templateHasText(DEFAULT_FEATURE_GRAPHIC_TEMPLATE)).toBe(false);
+    expect(templateHasText({ ...DEFAULT_FEATURE_GRAPHIC_TEMPLATE, headlineSource: "listingTitle" })).toBe(true);
+    expect(templateHasText({ ...DEFAULT_FEATURE_GRAPHIC_TEMPLATE, badges: ["Offline"] })).toBe(true);
+  });
+
+  it("defaults to a custom headline, and reads templates saved with useListingTitle", () => {
+    expect(DEFAULT_FEATURE_GRAPHIC_TEMPLATE.headlineSource).toBe("custom");
+    expect(sanitizeFeatureGraphicTemplate({ useListingTitle: true }).headlineSource).toBe("listingTitle");
+    expect(sanitizeFeatureGraphicTemplate({ useListingTitle: false }).headlineSource).toBe("custom");
+    expect(sanitizeFeatureGraphicTemplate({ headlineSource: "shortDescription" }).headlineSource).toBe(
+      "shortDescription"
+    );
+    expect(sanitizeFeatureGraphicTemplate({ headlineSource: "bogus" }).headlineSource).toBe("custom");
+  });
+
+  it("takes the headline from the listing field the template points to", () => {
+    const listing = { title: " Title ", shortDescription: " Convert currencies offline " };
+    const tpl = DEFAULT_FEATURE_GRAPHIC_TEMPLATE;
+    expect(listingHeadline(tpl, listing)).toBe("");
+    expect(listingHeadline({ ...tpl, headlineSource: "listingTitle" }, listing)).toBe("Title");
+    expect(listingHeadline({ ...tpl, headlineSource: "shortDescription" }, listing)).toBe(
+      "Convert currencies offline"
+    );
+    expect(listingHeadline({ ...tpl, headlineSource: "shortDescription" }, null)).toBe("");
   });
 });
 
@@ -90,31 +114,37 @@ describe("stored banner metadata", () => {
     });
   });
 
-  const base = { template: DEFAULT_FEATURE_GRAPHIC_TEMPLATE, artHash: "a1", listingTitle: "Title" };
+  const fromTitle = { ...DEFAULT_FEATURE_GRAPHIC_TEMPLATE, headlineSource: "listingTitle" as const };
+  const base = { template: fromTitle, artHash: "a1", listing: { title: "Title" } };
 
   it("changes when the layout, the illustration or the listing title changes", () => {
     const fp = featureGraphicFingerprintSource({ ...base, manual: false });
     expect(featureGraphicFingerprintSource({ ...base, manual: false, artHash: "a2" })).not.toBe(fp);
-    expect(featureGraphicFingerprintSource({ ...base, manual: false, listingTitle: "New" })).not.toBe(fp);
+    expect(featureGraphicFingerprintSource({ ...base, manual: false, listing: { title: "New" } })).not.toBe(fp);
     expect(
-      featureGraphicFingerprintSource({
-        ...base,
-        manual: false,
-        template: { ...DEFAULT_FEATURE_GRAPHIC_TEMPLATE, textSide: "right" },
-      })
+      featureGraphicFingerprintSource({ ...base, manual: false, template: { ...fromTitle, textSide: "right" } })
     ).not.toBe(fp);
   });
 
   it("ignores the template text for hand-edited banners, not the layout", () => {
     const fp = featureGraphicFingerprintSource({ ...base, manual: true });
-    const otherText = { ...DEFAULT_FEATURE_GRAPHIC_TEMPLATE, badges: ["New badge"] };
+    const otherText = { ...fromTitle, badges: ["New badge"] };
     expect(featureGraphicFingerprintSource({ ...base, manual: true, template: otherText })).toBe(fp);
-    expect(featureGraphicFingerprintSource({ ...base, manual: true, listingTitle: "New" })).toBe(fp);
+    expect(featureGraphicFingerprintSource({ ...base, manual: true, listing: { title: "New" } })).toBe(fp);
     expect(featureGraphicFingerprintSource({ ...base, manual: true, artHash: "a2" })).not.toBe(fp);
   });
 });
 
 describe("layout helpers", () => {
+  it("skips languages whose script the renderer cannot shape", () => {
+    for (const l of ["hi", "hi-IN", "bn-BD", "ta-IN", "km-KH", "my-MM", "si-LK"]) {
+      expect(supportsLocalizedFeatureGraphic(l)).toBe(false);
+    }
+    for (const l of ["en-US", "fr-FR", "ar", "iw-IL", "ja-JP", "th", "zh-CN"]) {
+      expect(supportsLocalizedFeatureGraphic(l)).toBe(true);
+    }
+  });
+
   it("detects RTL languages from any locale form", () => {
     expect(isRtlLocale("ar")).toBe(true);
     expect(isRtlLocale("fa-IR")).toBe(true);

@@ -29,8 +29,8 @@ vi.mock("@/lib/storage", () => ({
   readFile: (path: string) => Buffer.from(path),
 }));
 
-import { buildUpdatesFromListings } from "./index";
-import { pushesFeatureGraphic } from "./playstore";
+import { buildUpdatesFromListings, listLocalFeatureGraphics } from "./index";
+import { hasLocalFeatureGraphicFor, pushesFeatureGraphic } from "./playstore";
 
 const project = {
   id: "p1",
@@ -92,5 +92,23 @@ describe("pushesFeatureGraphic (Play Store)", () => {
 
   it("pushes nothing without a banner", () => {
     expect(pushesFeatureGraphic({ locale: "fr-FR", featureGraphicLocalized: true }, true)).toBe(false);
+  });
+});
+
+describe("default language banner check (Play Store)", () => {
+  it("inventories the whole project, not just the current batch", () => {
+    expect(listLocalFeatureGraphics(project)).toEqual({ project: true, localizedLocales: ["fr-FR"] });
+  });
+
+  it("accepts the project banner for any default language", () => {
+    expect(hasLocalFeatureGraphicFor("en-US", { project: true, localizedLocales: [] })).toBe(true);
+  });
+
+  it("accepts a localized banner only for its own language", () => {
+    const local = { project: false, localizedLocales: ["fr-FR", "he"] };
+    expect(hasLocalFeatureGraphicFor("fr-FR", local)).toBe(true);
+    expect(hasLocalFeatureGraphicFor("en-US", local)).toBe(false);
+    // Code Play legacy de l'hébreu.
+    expect(hasLocalFeatureGraphicFor("iw-IL", local)).toBe(true);
   });
 });

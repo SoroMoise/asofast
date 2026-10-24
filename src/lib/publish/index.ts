@@ -6,7 +6,10 @@ import {
   isStoreConnected as dbIsStoreConnected,
   saveStoreCredentials as dbSaveStoreCredentials,
 } from "@/lib/db";
-import { localeFeatureGraphicPaths } from "@/lib/aso/feature-graphic-layout";
+import {
+  localeFeatureGraphicDir,
+  localeFeatureGraphicPaths,
+} from "@/lib/aso/feature-graphic-layout";
 import { listFiles, readFile } from "@/lib/storage";
 import type { Generation, Listing, Project, StorePlatform } from "@/types";
 
@@ -17,6 +20,7 @@ import { FULL_SCOPE } from "./scope";
 import type {
   AppStoreCredentials,
   ListingMetadata,
+  LocalFeatureGraphics,
   PlayStoreCredentials,
   PublishProgress,
   PublishResult,
@@ -239,6 +243,16 @@ async function loadLocaleFeatureGraphic(
   return loadLocalFile(image.slice(0, slash), (file) => file === name);
 }
 
+/** Bannières présentes pour tout le projet (cf. LocalFeatureGraphics). */
+export function listLocalFeatureGraphics(project: Project): LocalFeatureGraphics {
+  return {
+    project: listFiles(`${project.id}/feature-graphic`).some((f) => f.name.startsWith("current.")),
+    localizedLocales: listFiles(localeFeatureGraphicDir(project.id))
+      .filter((f) => f.name.endsWith(".jpg"))
+      .map((f) => f.name.slice(0, -".jpg".length)),
+  };
+}
+
 async function downloadFrameUrls(value: unknown): Promise<StoreScreenshot[]> {
   const frames = Array.isArray(value) ? (value as { url?: unknown }[]) : [];
   const entries = frames.map((f, i) => ({ url: f?.url, i }));
@@ -381,6 +395,10 @@ export async function publishListings(
       opts?.onProgress
     );
   }
+  // Hors périmètre « store assets », aucune bannière ne partira: inventaire vide.
+  const localFeatureGraphics = (opts?.scope ?? FULL_SCOPE).storeAssets
+    ? listLocalFeatureGraphics(project)
+    : { project: false, localizedLocales: [] };
   return publishPlayStoreListings(
     creds as PlayStoreCredentials,
     project.store_identifier,
@@ -390,6 +408,7 @@ export async function publishListings(
       editId: opts?.editId,
       commit: opts?.commit,
       changesNotSentForReview: opts?.changesNotSentForReview,
+      localFeatureGraphics,
     }
   );
 }

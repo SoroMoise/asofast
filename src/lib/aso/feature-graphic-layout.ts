@@ -44,13 +44,17 @@ export function localeFeatureGraphicPaths(projectId: string, locale: string) {
   };
 }
 
+/**
+ * Origine du titre de la bannière: `custom` = `headline` du modèle, traduit;
+ * `listingTitle` / `shortDescription` = champ de la FICHE de chaque langue (déjà
+ * localisé et optimisé ASO, aucune traduction). Le titre de la fiche répète le
+ * nom affiché sous la bannière par Google Play: `custom` par défaut.
+ */
+export type FeatureGraphicHeadlineSource = "custom" | "listingTitle" | "shortDescription";
+
 export type FeatureGraphicTemplate = {
-  /**
-   * true: le titre affiché est le TITRE DE LA FICHE de chaque langue (déjà
-   * localisé et optimisé ASO, aucune traduction). false: `headline` traduit.
-   */
-  useListingTitle: boolean;
-  /** Titre dans la langue source (utilisé si useListingTitle = false). */
+  headlineSource: FeatureGraphicHeadlineSource;
+  /** Titre dans la langue source (utilisé si headlineSource = "custom"). */
   headline: string;
   /** Badges courts (bénéfices), langue source, traduits par langue. */
   badges: string[];
@@ -80,7 +84,7 @@ export type StoredFeatureGraphic = FeatureGraphicTexts & {
 };
 
 export const DEFAULT_FEATURE_GRAPHIC_TEMPLATE: FeatureGraphicTemplate = {
-  useListingTitle: true,
+  headlineSource: "custom",
   headline: "",
   badges: [],
   textSide: "left",
@@ -111,7 +115,15 @@ export function sanitizeFeatureGraphicTemplate(raw: unknown): FeatureGraphicTemp
   const d = DEFAULT_FEATURE_GRAPHIC_TEMPLATE;
   const width = typeof r.textWidth === "number" && Number.isFinite(r.textWidth) ? r.textWidth : d.textWidth;
   return {
-    useListingTitle: typeof r.useListingTitle === "boolean" ? r.useListingTitle : d.useListingTitle,
+    headlineSource:
+      r.headlineSource === "custom" ||
+      r.headlineSource === "listingTitle" ||
+      r.headlineSource === "shortDescription"
+        ? r.headlineSource
+        : // Modèles enregistrés avant headlineSource (booléen useListingTitle).
+          r.useListingTitle === true
+          ? "listingTitle"
+          : d.headlineSource,
     headline: cleanText(r.headline, MAX_HEADLINE_LENGTH),
     badges: (Array.isArray(r.badges) ? r.badges : [])
       .map((b) => cleanText(b, MAX_BADGE_LENGTH))
@@ -165,15 +177,15 @@ export function featureGraphicFingerprintSource(opts: {
   template: FeatureGraphicTemplate;
   artHash: string;
   manual: boolean;
-  listingTitle?: string | null;
+  listing?: ListingHeadlineTexts | null;
 }): string {
   const { template: t, artHash, manual } = opts;
   const layout = [t.textSide, t.textWidth, t.textColor, t.backgroundColor, t.backgroundGradientTo];
   const text = manual
     ? null
     : {
-        useListingTitle: t.useListingTitle,
-        headline: t.useListingTitle ? (opts.listingTitle ?? "").trim() : t.headline,
+        headlineSource: t.headlineSource,
+        headline: t.headlineSource === "custom" ? t.headline : listingHeadline(t, opts.listing),
         badges: t.badges,
       };
   return JSON.stringify({ v: 1, layout, artHash, text });
@@ -181,7 +193,33 @@ export function featureGraphicFingerprintSource(opts: {
 
 /** Le modèle a-t-il quelque chose à écrire ? */
 export function templateHasText(tpl: FeatureGraphicTemplate): boolean {
-  return tpl.useListingTitle || tpl.headline.length > 0 || tpl.badges.length > 0;
+  return tpl.headlineSource !== "custom" || tpl.headline.length > 0 || tpl.badges.length > 0;
+}
+
+/** Champs de la fiche d'une langue utilisables comme titre de bannière. */
+export type ListingHeadlineTexts = { title?: string | null; shortDescription?: string | null };
+
+/** Titre pris dans la fiche selon le modèle ("" si headlineSource = "custom"). */
+export function listingHeadline(
+  tpl: FeatureGraphicTemplate,
+  listing?: ListingHeadlineTexts | null
+): string {
+  if (tpl.headlineSource === "listingTitle") return (listing?.title ?? "").trim();
+  if (tpl.headlineSource === "shortDescription") return (listing?.shortDescription ?? "").trim();
+  return "";
+}
+
+/**
+ * Langues dont l'écriture n'est pas composée correctement par le moteur de rendu
+ * (opentype.js: pas de shaper indien ni USE, cf. fonts.ts). Une bannière y serait
+ * fautive: on n'en génère pas, Google Play y montre la bannière par défaut.
+ */
+const UNSHAPED_LANGS = new Set([
+  "as", "bn", "gu", "hi", "km", "kn", "lo", "ml", "mr", "my", "ne", "or", "pa", "si", "ta", "te",
+]);
+
+export function supportsLocalizedFeatureGraphic(locale: string): boolean {
+  return !UNSHAPED_LANGS.has(locale.toLowerCase().split(/[-_]/)[0]);
 }
 
 const RTL_LANGS = new Set(["ar", "he", "iw", "fa", "ur"]);

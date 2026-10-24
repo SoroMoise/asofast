@@ -7,6 +7,7 @@ import { mapWithConcurrency } from "@/lib/concurrency";
 import { createGate } from "./gate";
 import { fetchWithTimeout, NetworkError, withTimeout } from "./http";
 import type {
+  LocalFeatureGraphics,
   LocaleResult,
   PlayStoreCredentials,
   PublishProgress,
@@ -47,6 +48,22 @@ const PLAY_LANGUAGE_OVERRIDES: Record<string, string> = {
  */
 export function pushesFeatureGraphic(update: StoreUpdate, isDefaultLanguage: boolean): boolean {
   return Boolean(update.featureGraphic) && (update.featureGraphicLocalized === true || isDefaultLanguage);
+}
+
+/**
+ * Une bannière locale partira-t-elle sur la langue par défaut de la fiche ? La
+ * bannière unique du projet y va toujours; une bannière localisée seulement si
+ * c'est celle de cette langue. Une bannière localisée d'une AUTRE langue ne
+ * suffit pas: Play refuserait le commit.
+ */
+export function hasLocalFeatureGraphicFor(
+  defaultLanguage: string,
+  local: LocalFeatureGraphics
+): boolean {
+  const lang = defaultLanguage.toLowerCase();
+  return (
+    local.project || local.localizedLocales.some((l) => toPlayLanguage(l).toLowerCase() === lang)
+  );
 }
 
 function toPlayLanguage(code: string): string {
@@ -101,7 +118,13 @@ export async function publishPlayStoreListings(
   packageName: string,
   updates: StoreUpdate[],
   onProgress?: PublishProgress,
-  opts?: { editId?: string; commit?: boolean; changesNotSentForReview?: boolean }
+  opts?: {
+    editId?: string;
+    commit?: boolean;
+    changesNotSentForReview?: boolean;
+    /** Inventaire du projet entier; à défaut, déduit des updates du lot. */
+    localFeatureGraphics?: LocalFeatureGraphics;
+  }
 ): Promise<PublishResult> {
   const token = await accessToken(creds.serviceAccountJson);
   const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
@@ -207,16 +230,25 @@ export async function publishPlayStoreListings(
     return (await listImages(lang, imageType)).hashes;
   }
 
-  // Google Play refuse une fiche sans feature graphic. On ne bloque que s'il
-  // manque DES DEUX CÔTÉS: aucun import dans le projet ET aucun déjà en place sur
-  // la langue par défaut de la fiche. Contrôlé une seule fois (lot qui ouvre
-  // l'edit), avant tout upload. Si Play ne répond pas (lecture en échec, langue
-  // par défaut inconnue), on laisse passer: le commit tranchera.
-  if (isFirstBatch && defaultLanguage && !updates.some((u) => u.featureGraphic)) {
+  // Google Play refuse une fiche sans feature graphic sur sa langue par défaut.
+  // On ne bloque que s'il manque DES DEUX CÔTÉS: aucune bannière locale pour
+  // cette langue (bannière unique du projet, ou bannière localisée de CETTE
+  // langue) ET aucune déjà en place sur Play. Contrôlé une seule fois (lot qui
+  // ouvre l'edit), avant tout upload. Si Play ne répond pas (lecture en échec,
+  // langue par défaut inconnue), on laisse passer: le commit tranchera.
+  const localGraphics = opts?.localFeatureGraphics ?? {
+    project: updates.some((u) => u.featureGraphic && !u.featureGraphicLocalized),
+    localizedLocales: updates.filter((u) => u.featureGraphicLocalized).map((u) => u.locale),
+  };
+  if (
+    isFirstBatch &&
+    defaultLanguage &&
+    !hasLocalFeatureGraphicFor(defaultLanguage, localGraphics)
+  ) {
     const remote = await listImages(defaultLanguage, IMAGE_TYPE_FEATURE_GRAPHIC);
     if (remote.ok && remote.count === 0) {
       throw new Error(
-        "Feature graphic missing: upload it in the Feature graphic card before publishing."
+        `Feature graphic missing for the listing's default language (${defaultLanguage}): upload the default banner, or generate the localized banner of that language, before publishing.`
       );
     }
   }

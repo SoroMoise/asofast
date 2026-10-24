@@ -14,6 +14,8 @@ import {
   sanitizeFeatureGraphicTexts,
   saveFeatureGraphicTemplate,
   saveLocaleFeatureGraphic,
+  supportsLocalizedFeatureGraphic,
+  type ListingHeadlineTexts,
   type LocaleFeatureGraphic,
 } from "@/lib/aso/feature-graphic";
 import { mapWithConcurrency } from "@/lib/concurrency";
@@ -38,11 +40,15 @@ function projectLocales(project: Project): string[] {
   return project.target_locales.length > 0 ? project.target_locales : [project.source_locale];
 }
 
-function listingTitles(projectId: string): Map<string, string> {
+/** Titre et description courte de la fiche de chaque langue (titre de bannière). */
+function listingTexts(projectId: string): Map<string, ListingHeadlineTexts> {
   return new Map(
     dbListListings(projectId).map((row) => {
       const listing = parseListing(row);
-      return [String(listing.locale), String(listing.title ?? "")] as const;
+      return [
+        String(listing.locale),
+        { title: listing.title ?? "", shortDescription: listing.short_description ?? "" },
+      ] as const;
     })
   );
 }
@@ -51,7 +57,8 @@ function listingTitles(projectId: string): Map<string, string> {
  * GET /api/projects/{id}/feature-graphics
  * État de la bannière localisée: modèle (ou défaut), illustration, et pour
  * chaque langue cible l'URL de la bannière rendue, ses textes, si ces textes
- * ont été édités à la main et si la bannière est périmée (null si absente).
+ * ont été édités à la main et si la bannière est périmée (null si absente), et
+ * si son écriture est prise en charge (sinon: bannière par défaut).
  */
 export async function GET(_request: Request, { params }: Params): Promise<Response> {
   const { projectId } = await params;
@@ -61,11 +68,11 @@ export async function GET(_request: Request, { params }: Params): Promise<Respon
   const template = readFeatureGraphicTemplate(project.id);
   const art = findFeatureGraphicArt(project.id);
   const ctx = template && art ? loadFeatureGraphicContext(project.id) : null;
-  const titles = listingTitles(project.id);
+  const listings = listingTexts(project.id);
   const stamp = Date.now();
   const locales = projectLocales(project).map((locale) => {
     const status = ctx
-      ? localeFeatureGraphicStatus(ctx, locale, titles.get(locale) ?? null)
+      ? localeFeatureGraphicStatus(ctx, locale, listings.get(locale) ?? null)
       : {
           exists: hasLocaleFeatureGraphic(project.id, locale),
           stale: false,
@@ -81,6 +88,7 @@ export async function GET(_request: Request, { params }: Params): Promise<Respon
         : null,
       manual: status.stored?.manual ?? false,
       stale: status.stale,
+      supported: supportsLocalizedFeatureGraphic(locale),
     };
   });
   return Response.json({
@@ -109,6 +117,7 @@ export async function PUT(request: Request, { params }: Params): Promise<Respons
  * body: { locales?: string[], onlyMissing?: boolean, texts?: { headline, badges },
  *         resetManual?: boolean }
  * Rend les bannières des langues demandées (défaut: toutes les langues cibles).
+ * Les langues dont l'écriture n'est pas prise en charge sont ignorées (`skipped`).
  * `texts` = édition manuelle, accepté pour UNE seule langue (aucune traduction).
  * Des textes déjà édités à la main sont conservés, sauf `resetManual: true`.
  * Traductions en parallèle, rendu séquentiel (satori bloque la boucle); une
@@ -142,9 +151,11 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   }
 
   const allowed = new Set(projectLocales(project));
-  const requested = Array.isArray(body.locales)
+  const asked = Array.isArray(body.locales)
     ? body.locales.map(String).filter((l) => allowed.has(l))
     : [...allowed];
+  const requested = asked.filter(supportsLocalizedFeatureGraphic);
+  const skipped = asked.filter((l) => !supportsLocalizedFeatureGraphic(l));
   const manualTexts = body.texts !== undefined ? sanitizeFeatureGraphicTexts(body.texts) : undefined;
   if (manualTexts && requested.length !== 1) {
     return Response.json({ error: "Manual texts apply to exactly one language." }, { status: 400 });
@@ -155,20 +166,20 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
       : requested;
 
   const ctx = loadFeatureGraphicContext(project.id);
-  const titles = listingTitles(project.id);
+  const listings = listingTexts(project.id);
   const [, resolved] = await Promise.all([
     warmFonts(locales),
     mapWithConcurrency(locales, TRANSLATE_CONCURRENCY, async (locale) => {
       try {
-        const listingTitle = titles.get(locale) ?? null;
+        const listing = listings.get(locale) ?? null;
         const r = await resolveLocaleFeatureGraphicTexts(ctx, {
           sourceLocale: project.source_locale,
           locale,
-          listingTitle,
+          listing,
           texts: manualTexts,
           resetManual: body.resetManual === true,
         });
-        return { locale, listingTitle, ...r };
+        return { locale, listing, ...r };
       } catch (e) {
         return { locale, error: e instanceof Error ? e.message : "Translation failed." };
       }
@@ -188,7 +199,7 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
       failed.push({ locale: r.locale, error: e instanceof Error ? e.message : "Render failed." });
     }
   }
-  return Response.json({ done, failed });
+  return Response.json({ done, failed, skipped });
 }
 
 async function preview(
@@ -202,6 +213,12 @@ async function preview(
     typeof body.locale === "string" && projectLocales(project).includes(body.locale)
       ? body.locale
       : project.source_locale;
+  if (!supportsLocalizedFeatureGraphic(locale)) {
+    return Response.json(
+      { error: "This language's script is not supported: it uses the default banner." },
+      { status: 400 }
+    );
+  }
   const ctx = loadFeatureGraphicContext(
     project.id,
     sanitizeFeatureGraphicTemplate(body.template)
@@ -210,7 +227,7 @@ async function preview(
     const { texts } = await resolveLocaleFeatureGraphicTexts(ctx, {
       sourceLocale: project.source_locale,
       locale,
-      listingTitle: listingTitles(project.id).get(locale) ?? null,
+      listing: listingTexts(project.id).get(locale) ?? null,
     });
     await warmFonts([locale]);
     const jpeg = await renderFeatureGraphic({

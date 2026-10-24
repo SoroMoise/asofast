@@ -15,6 +15,7 @@ import {
   MAX_BADGES,
   MAX_HEADLINE_LENGTH,
   SAFE_MARGIN_X,
+  type FeatureGraphicHeadlineSource,
   type FeatureGraphicTemplate,
   type FeatureGraphicTexts,
 } from "@/lib/aso/feature-graphic-layout";
@@ -29,6 +30,8 @@ type LocaleState = {
   manual: boolean;
   /** Modèle, illustration ou titre de la fiche changés depuis le rendu. */
   stale: boolean;
+  /** false: écriture mal composée par le moteur, la langue garde la bannière par défaut. */
+  supported: boolean;
 };
 type ApiState = {
   configured: boolean;
@@ -270,10 +273,12 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
     return <div className="h-24 animate-pulse rounded-lg bg-muted" aria-hidden="true" />;
   }
 
-  const allLocales = state.locales.map((l) => l.locale);
-  const missing = state.locales.filter((l) => !l.url).map((l) => l.locale);
-  const stale = state.locales.filter((l) => l.url && l.stale).map((l) => l.locale);
-  const manualCount = state.locales.filter((l) => l.url && l.manual).length;
+  const supported = state.locales.filter((l) => l.supported);
+  const unsupported = state.locales.filter((l) => !l.supported);
+  const allLocales = supported.map((l) => l.locale);
+  const missing = supported.filter((l) => !l.url).map((l) => l.locale);
+  const stale = supported.filter((l) => l.url && l.stale).map((l) => l.locale);
+  const manualCount = supported.filter((l) => l.url && l.manual).length;
   const shownDraft = draft && draft.locale === preview ? draft : null;
   const ready = Boolean(state.art);
   const setT = (patch: Partial<FeatureGraphicTemplate>) => setTpl({ ...tpl, ...patch });
@@ -334,22 +339,33 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
       </div>
 
       <div className="grid max-w-2xl gap-3 sm:grid-cols-2">
-        <label className="flex items-center gap-2 text-sm sm:col-span-2">
-          <input
-            type="checkbox"
-            checked={tpl.useListingTitle}
-            onChange={(e) => setT({ useListingTitle: e.target.checked })}
+        <div className="flex flex-col gap-1 sm:col-span-2">
+          <Label htmlFor="fg-headline-source">Headline source</Label>
+          <select
+            id="fg-headline-source"
+            className="h-10 rounded-md border bg-background px-3 text-sm"
+            value={tpl.headlineSource}
             disabled={blocked}
-          />
-          Headline = listing title of each language (already localized, no translation)
-        </label>
+            onChange={(e) =>
+              setT({ headlineSource: e.target.value as FeatureGraphicHeadlineSource })
+            }
+          >
+            <option value="custom">Custom headline, translated into each language</option>
+            <option value="shortDescription">
+              Short description of each listing (already localized, no translation)
+            </option>
+            <option value="listingTitle">
+              Title of each listing (repeats the app name shown under the banner)
+            </option>
+          </select>
+        </div>
         <div className="flex flex-col gap-1 sm:col-span-2">
           <Label htmlFor="fg-headline">Headline ({state.sourceLocale})</Label>
           <Input
             id="fg-headline"
             value={tpl.headline}
             maxLength={MAX_HEADLINE_LENGTH}
-            disabled={blocked || tpl.useListingTitle}
+            disabled={blocked || tpl.headlineSource !== "custom"}
             onChange={(e) => setT({ headline: e.target.value })}
             placeholder="Convert 148 currencies, even offline"
           />
@@ -448,6 +464,13 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
           </Button>
         ) : null}
       </div>
+      {unsupported.length > 0 ? (
+        <p className="max-w-prose text-xs text-muted-foreground">
+          {unsupported.map((l) => LOCALE_LABELS.get(l.locale) ?? l.locale).join(", ")}: no
+          localized banner, the banner renderer does not shape this script correctly yet. Google
+          Play shows the default banner for these languages.
+        </p>
+      ) : null}
       {manualCount > 0 ? (
         <p className="text-xs text-muted-foreground">
           {manualCount} language(s) have text edited by hand: regenerating keeps it (use &quot;Back to
@@ -471,9 +494,15 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
               onChange={(e) => setPreview(e.target.value)}
             >
               {state.locales.map((l) => (
-                <option key={l.locale} value={l.locale}>
+                <option key={l.locale} value={l.locale} disabled={!l.supported}>
                   {LOCALE_LABELS.get(l.locale) ?? l.locale}
-                  {!l.url ? " (not generated)" : l.stale ? " (outdated)" : ""}
+                  {!l.supported
+                    ? " (default banner)"
+                    : !l.url
+                      ? " (not generated)"
+                      : l.stale
+                        ? " (outdated)"
+                        : ""}
                 </option>
               ))}
             </select>

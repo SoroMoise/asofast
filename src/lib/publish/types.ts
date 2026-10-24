@@ -113,3 +113,13 @@ export type PublishProgress = (
   ok?: boolean,
   error?: string
 ) => void;
+
+/**
+ * Feature graphics présents localement pour TOUT le projet (pas seulement le
+ * lot en cours): bannière unique du projet, et langues (codes app) qui ont leur
+ * bannière localisée. Sert au contrôle « langue par défaut sans bannière ».
+ */
+export type LocalFeatureGraphics = {
+  project: boolean;
+  localizedLocales: string[];
+};

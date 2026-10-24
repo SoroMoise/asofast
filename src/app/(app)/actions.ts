@@ -29,6 +29,7 @@ import {
   generateLocaleFeatureGraphic,
   hasLocaleFeatureGraphic,
   isFeatureGraphicConfigured,
+  supportsLocalizedFeatureGraphic,
 } from "@/lib/aso/feature-graphic";
 import { translateWhatsNew } from "@/lib/aso/translate";
 import { mapWithConcurrency } from "@/lib/concurrency";
@@ -585,8 +586,14 @@ export async function generateProjectScreenshots(input: {
     const existingListings = dbListListings(project.id);
     const bannerConfigured =
       project.store === "playstore" && isFeatureGraphicConfigured(project.id);
-    const titleByLocale = new Map(
-      existingListings.map((row) => [String(row.locale), String(row.title ?? "")] as const)
+    const listingByLocale = new Map(
+      existingListings.map(
+        (row) =>
+          [
+            String(row.locale),
+            { title: String(row.title ?? ""), shortDescription: String(row.short_description ?? "") },
+          ] as const
+      )
     );
     const locales = resolveRequestedLocales(
       input.locales,
@@ -650,16 +657,21 @@ export async function generateProjectScreenshots(input: {
         });
 
         // Bannière localisée (Play Store), si le modèle et l'illustration sont
-        // configurés et qu'elle n'existe pas encore: une bannière existante
-        // (peut-être éditée à la main) se gère depuis la carte Feature graphic.
-        // Non bloquant: une bannière en échec se relance depuis cette carte.
-        if (bannerConfigured && !hasLocaleFeatureGraphic(project.id, locale)) {
+        // configurés, que l'écriture de la langue est prise en charge et qu'elle
+        // n'existe pas encore: une bannière existante (peut-être éditée à la
+        // main) se gère depuis la carte Feature graphic. Non bloquant: une
+        // bannière en échec se relance depuis cette carte.
+        if (
+          bannerConfigured &&
+          supportsLocalizedFeatureGraphic(locale) &&
+          !hasLocaleFeatureGraphic(project.id, locale)
+        ) {
           try {
             await generateLocaleFeatureGraphic({
               projectId: project.id,
               sourceLocale: project.source_locale,
               locale,
-              listingTitle: titleByLocale.get(locale) ?? null,
+              listing: listingByLocale.get(locale) ?? null,
             });
           } catch (e) {
             console.error(
