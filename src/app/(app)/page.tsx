@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ProjectWizard } from "@/components/dashboard/project-wizard";
 import { ProjectCard } from "@/components/dashboard/project-card";
 import { ProjectsEmptyState } from "@/components/dashboard/projects-empty-state";
+import { syncUnpublishedProjects } from "@/lib/aso/store-sync";
 import { listProjects } from "@/lib/db";
 import { parseProject } from "@/lib/db/parse";
 
@@ -14,7 +15,8 @@ export const maxDuration = 300;
 
 export default async function DashboardPage() {
   const rows = listProjects();
-  const projects = rows.map((r) => parseProject(r));
+  // Projets créés avant publication de l'app: nom/icône repris du store dès qu'elle est en ligne.
+  const projects = await syncUnpublishedProjects(rows.map((r) => parseProject(r)));
 
   return (
     <div className="flex flex-col gap-6">

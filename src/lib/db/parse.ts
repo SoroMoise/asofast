@@ -15,6 +15,7 @@ function parseJson<T>(value: unknown, fallback: T): T {
 export function parseProject(row: Record<string, unknown>): Project {
   return {
     ...(row as Record<string, never>),
+    published: row.published !== 0 && row.published !== false,
     competitors: parseJson(row.competitors, []),
     target_locales: parseJson(row.target_locales, []),
     features: parseJson(row.features, []),

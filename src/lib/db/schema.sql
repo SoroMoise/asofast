@@ -22,6 +22,7 @@ create table if not exists projects (
   app_name                    text,
   developer_name              text,
   icon_url                    text,
+  published                   integer not null default 1,
   competitors                 text not null default '[]',
   target_locales              text not null default '[]',
   features                    text not null default '[]',

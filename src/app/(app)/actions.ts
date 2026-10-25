@@ -31,9 +31,10 @@ import {
   isFeatureGraphicConfigured,
   supportsLocalizedFeatureGraphic,
 } from "@/lib/aso/feature-graphic";
+import { syncStoreMetadata } from "@/lib/aso/store-sync";
 import { translateWhatsNew } from "@/lib/aso/translate";
 import { mapWithConcurrency } from "@/lib/concurrency";
-import { MAX_FEATURE_LENGTH, MAX_FEATURES } from "@/lib/constants";
+import { MAX_FEATURE_LENGTH, MAX_FEATURES, STORE_LABELS } from "@/lib/constants";
 import {
   createProject,
   deleteListing as dbDeleteListing,
@@ -99,6 +100,7 @@ export async function createAsoProject(input: {
   appName: string;
   developerName: string | null;
   iconUrl: string | null;
+  published: boolean;
 }): Promise<{ projectId?: string; error?: string }> {
   const store = input.store;
   if (!STORES.includes(store)) return { error: "Invalid platform." };
@@ -124,6 +126,7 @@ export async function createAsoProject(input: {
       app_name: appName,
       developer_name: input.developerName ?? null,
       icon_url: input.iconUrl ?? null,
+      published: input.published !== false,
       competitors: [],
       target_locales: [],
     });
@@ -136,6 +139,35 @@ export async function createAsoProject(input: {
     }
     return { error: msg };
   }
+}
+
+/**
+ * Passe un projet créé "pas encore publié" en publié. L'app est d'abord cherchée
+ * sur le store pour reprendre nom, développeur et icône; si le store ne l'expose
+ * pas encore, `force` la marque publiée quand même (la synchro des métadonnées
+ * sera retentée automatiquement au chargement des pages).
+ */
+export async function markProjectPublished(input: {
+  projectId: string;
+  force?: boolean;
+}): Promise<{ error?: string; notFound?: boolean }> {
+  const project = parseProject(dbGetProject(input.projectId) ?? {});
+  if (!project.id) return { error: "Project not found." };
+
+  const synced = await syncStoreMetadata(project, { force: true });
+  if (!synced) {
+    if (!input.force) {
+      return {
+        notFound: true,
+        error: `${project.store_identifier} was not found on ${STORE_LABELS[project.store]} yet. A newly released app can take a few hours to appear.`,
+      };
+    }
+    dbUpdateProject(project.id, { published: 1 });
+  }
+
+  revalidatePath("/");
+  revalidatePath(`/projects/${project.id}`);
+  return {};
 }
 
 export async function updateProjectFeatures(input: {

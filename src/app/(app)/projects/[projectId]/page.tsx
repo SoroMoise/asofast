@@ -8,6 +8,7 @@ import { FeaturesEditor } from "@/components/dashboard/features-editor";
 import { GenerateCta } from "@/components/dashboard/generate-cta";
 import { ListingTabs } from "@/components/dashboard/listing-tabs";
 import { LocalesEditor } from "@/components/dashboard/locales-editor";
+import { MarkPublishedButton } from "@/components/dashboard/mark-published-button";
 import { PrivacyPolicyEditor } from "@/components/dashboard/privacy-policy-editor";
 import { WhatsNewEditor } from "@/components/dashboard/whats-new-editor";
 import { ProjectBusyProvider } from "@/components/dashboard/project-busy";
@@ -23,6 +24,7 @@ import {
 import { STORE_IDENTIFIER_LABELS, STORE_LABELS } from "@/lib/constants";
 import { storeIconUrl } from "@/lib/store-icons";
 import { listUserScreenshots, type AppRef } from "@/lib/aso";
+import { needsStoreSync, syncStoreMetadata } from "@/lib/aso/store-sync";
 import { getProject as dbGetProject, listListings as dbListListings } from "@/lib/db";
 import { parseListing, parseProject } from "@/lib/db/parse";
 import { isStoreConnected } from "@/lib/publish";
@@ -38,8 +40,12 @@ export default async function ProjectDetailPage({
 }) {
   const { projectId } = await params;
 
-  const project = parseProject(dbGetProject(projectId) ?? {});
-  if (!project.id) notFound();
+  const stored = parseProject(dbGetProject(projectId) ?? {});
+  if (!stored.id) notFound();
+  // App pas encore publiée à la création: reprend nom/icône dès qu'elle est en ligne.
+  const project = needsStoreSync(stored)
+    ? ((await syncStoreMetadata(stored)) ?? stored)
+    : stored;
 
   const listings = dbListListings(projectId).map((r) => parseListing(r));
 
@@ -94,6 +100,7 @@ export default async function ProjectDetailPage({
               .filter(Boolean)
               .join(" · ")}
           </p>
+          {!project.published ? <MarkPublishedButton projectId={project.id} /> : null}
         </div>
       </div>
 

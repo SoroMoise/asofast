@@ -31,6 +31,21 @@ export function initDatabase(): void {
   if (!existsSync(schemaPath)) return;
   const sql = readFileSync(schemaPath, "utf-8");
   db.exec(sql);
+  migrate();
+}
+
+/** Colonnes ajoutées après coup: `create table if not exists` ne les crée pas
+ *  sur une base existante. */
+function migrate(): void {
+  const columns = db.prepare("pragma table_info(projects)").all() as { name: string }[];
+  if (!columns.some((c) => c.name === "published")) {
+    db.exec("alter table projects add column published integer not null default 1");
+    // Projets créés en saisie manuelle (app pas encore publiée): aucune
+    // métadonnée store n'a pu être récupérée.
+    db.exec(
+      "update projects set published = 0 where icon_url is null and developer_name is null"
+    );
+  }
 }
 
 // ============================================================================
@@ -47,8 +62,8 @@ export const createProject = (input: Record<string, unknown>): { id: string } =>
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   db.prepare(`
-    insert into projects (id, user_id, name, store, store_identifier, app_name, developer_name, icon_url, competitors, target_locales, created_at, updated_at)
-    values (?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    insert into projects (id, user_id, name, store, store_identifier, app_name, developer_name, icon_url, published, competitors, target_locales, created_at, updated_at)
+    values (?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id,
     input.name,
@@ -57,6 +72,7 @@ export const createProject = (input: Record<string, unknown>): { id: string } =>
     input.app_name ?? null,
     input.developer_name ?? null,
     input.icon_url ?? null,
+    input.published === false ? 0 : 1,
     JSON.stringify(input.competitors ?? []),
     JSON.stringify(input.target_locales ?? []),
     now,
