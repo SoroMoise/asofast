@@ -69,6 +69,7 @@ export function ProjectWizard() {
             appName: app.name,
             developerName: app.developer,
             iconUrl: app.icon,
+            published: true,
           }
         : {
             store,
@@ -76,6 +77,7 @@ export function ProjectWizard() {
             appName: manualName.trim(),
             developerName: null,
             iconUrl: null,
+            published: false,
           };
       if (!payload) return;
 

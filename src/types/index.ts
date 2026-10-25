@@ -40,6 +40,8 @@ export type Project = {
   app_name: string | null;
   developer_name: string | null;
   icon_url: string | null;
+  /** false tant que l'app n'est pas trouvée sur le store (projet créé en saisie manuelle). */
+  published: boolean;
   competitors: AppRef[];
   target_locales: string[];
   features: string[];
