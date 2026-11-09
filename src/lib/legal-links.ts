@@ -35,6 +35,16 @@ export function isAbsoluteHttpUrl(value: string): boolean {
   return /^https?:\/\//i.test(value.trim());
 }
 
+/** URL parsable dont le protocole est http(s). */
+export function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Résout un lien légal saisi par l'utilisateur: une URL complète est gardée
  * telle quelle, un chemin (`/privacy`, `privacy.html`) est collé à l'URL de
@@ -75,7 +85,8 @@ function escapeRegExp(s: string): string {
 export function containsUrl(text: string, url: string): boolean {
   const u = normalizeBaseUrl(url);
   if (!u) return false;
-  const re = new RegExp(`${escapeRegExp(u)}/?(?![\\w/~%?#=&+-]|\\.\\w)`, "i");
+  // Sensible à la casse: le chemin d'une URL l'est (`/Privacy` ≠ `/privacy`).
+  const re = new RegExp(`${escapeRegExp(u)}/?(?![\\w/~%?#=&+-]|\\.\\w)`);
   return re.test(text);
 }
 

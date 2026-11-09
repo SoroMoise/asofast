@@ -47,6 +47,7 @@ import {
 } from "@/lib/db";
 import {
   isAbsoluteHttpUrl,
+  isHttpUrl,
   normalizeBaseUrl,
   projectLegalLinks,
   resolveLegalUrl,
@@ -193,15 +194,6 @@ export async function updateProjectFeatures(input: {
   return {};
 }
 
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Site + liens légaux du projet. L'URL de base du site est saisie une fois; la
  * politique de confidentialité et les conditions d'utilisation acceptent un
@@ -221,10 +213,21 @@ export async function updateProjectLegalLinks(input: {
   if (websiteUrl && !isHttpUrl(websiteUrl)) {
     return { error: "Invalid website URL: a full http(s) link is expected (e.g. https://your-site.com)." };
   }
+  // Les chemins sont collés par chaîne à la base: une query ou un fragment
+  // donnerait `https://site.com/?x=1/privacy`.
+  if (websiteUrl && /[?#]/.test(websiteUrl)) {
+    return { error: "Invalid website URL: remove the ?query or #fragment part." };
+  }
 
   const resolve = (raw: unknown, what: string): { url: string } | { error: string } => {
     const value = String(raw ?? "").trim().slice(0, 500);
     if (!value) return { url: "" };
+    if (/\s/.test(value)) return { error: `Invalid ${what} link: spaces are not allowed.` };
+    // Une URL sans schéma (`www.site.com/privacy`) serait sinon collée comme un
+    // chemin: `https://site.com/www.site.com/privacy`.
+    if (!isAbsoluteHttpUrl(value) && /^(www\.|[\w-]+(\.[\w-]+)+\/)/i.test(value)) {
+      return { error: `Invalid ${what} link: start a full link with https://.` };
+    }
     if (!isAbsoluteHttpUrl(value) && !websiteUrl) {
       return { error: `Enter the website URL first, or a full http(s) link for the ${what}.` };
     }

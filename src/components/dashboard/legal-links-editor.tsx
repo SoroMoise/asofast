@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { normalizeBaseUrl, relativeToBase, resolveLegalUrl } from "@/lib/legal-links";
+import { isHttpUrl, normalizeBaseUrl, relativeToBase, resolveLegalUrl } from "@/lib/legal-links";
 import type { StorePlatform } from "@/types";
 
 /**
@@ -47,6 +47,14 @@ export function LegalLinksEditor({
   const [website, setWebsite] = React.useState(initial.website);
   const [privacy, setPrivacy] = React.useState(initial.privacy);
   const [terms, setTerms] = React.useState(initial.terms);
+  // Le serveur normalise (slash final retiré, chemin résolu puis réaffiché
+  // relatif): on se recale sur les valeurs stockées après chaque refresh,
+  // sinon le bloc resterait « dirty » juste après un save réussi.
+  React.useEffect(() => {
+    setWebsite(initial.website);
+    setPrivacy(initial.privacy);
+    setTerms(initial.terms);
+  }, [initial]);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
@@ -60,7 +68,9 @@ export function LegalLinksEditor({
     { label: "Website", url: normalizeBaseUrl(website) },
     { label: "Privacy Policy", url: resolveLegalUrl(website, privacy) },
     { label: "Terms of Use", url: resolveLegalUrl(website, terms) },
-  ].filter((l) => l.url);
+  ]
+    // Pas d'aperçu d'un lien que le serveur refusera (base sans https://, etc.).
+    .filter((l) => l.url && isHttpUrl(l.url) && !/\s/.test(l.url));
 
   function touched() {
     setMessage(null);

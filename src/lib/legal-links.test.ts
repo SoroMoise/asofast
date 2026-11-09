@@ -44,6 +44,10 @@ describe("containsUrl", () => {
     expect(containsUrl("Docs: https://site.com.evil.io", "https://site.com")).toBe(false);
   });
 
+  it("is case-sensitive, since URL paths are", () => {
+    expect(containsUrl("See https://site.com/Privacy", "https://site.com/privacy")).toBe(false);
+  });
+
   it("matches at end of text, before a space, slash or final period", () => {
     expect(containsUrl("Site: https://site.com", "https://site.com")).toBe(true);
     expect(containsUrl("Visit https://site.com/ today", "https://site.com")).toBe(true);
