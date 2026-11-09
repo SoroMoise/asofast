@@ -18,7 +18,7 @@ export function getDeepSeek(): OpenAI {
       apiKey,
       baseURL: "https://api.deepseek.com",
       maxRetries: 5,
-      timeout: 60_000,
+      timeout: 240_000,
     });
   }
   return client;

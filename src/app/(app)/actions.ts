@@ -283,7 +283,7 @@ export type AsoGenerationResult = {
   failed: { locale: string; error: string }[];
 };
 
-const LOCALE_CONCURRENCY = 5;
+const LOCALE_CONCURRENCY = 2;
 const SHOT_LOCALE_CONCURRENCY = 2;
 
 export async function generateAso(input: {
