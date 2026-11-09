@@ -4,6 +4,15 @@ vi.mock("@/lib/scrapers", () => ({ fetchAppMetadata: vi.fn() }));
 vi.mock("./keywords-llm", () => ({ extractKeywordsLLM: vi.fn() }));
 vi.mock("./translate", () => ({ translateKeywords: vi.fn() }));
 vi.mock("./generate", () => ({ generateListingCopy: vi.fn() }));
+// Retries reseau sans attente reelle.
+vi.mock("@/lib/ai/retry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/ai/retry")>();
+  return {
+    ...actual,
+    withNetworkRetry: <T,>(fn: () => Promise<T>, o: object = {}) =>
+      actual.withNetworkRetry(fn, { ...o, sleep: async () => {} }),
+  };
+});
 
 import { fetchAppMetadata } from "@/lib/scrapers";
 import { extractKeywordsLLM } from "./keywords-llm";
@@ -101,33 +110,52 @@ describe("runLocalePipeline", () => {
     expect(baseUsed()).toEqual(["mot cle manuel"]);
   });
 
-  it("degrades to the untranslated base when translation fails", async () => {
+  it("fails the locale (no English leak) when translation keeps failing", async () => {
     mExtract.mockResolvedValue(new Map([["video editor", 5]]));
-    mTranslate.mockRejectedValue(new Error("openai down"));
+    mTranslate.mockRejectedValue(new Error("Request timed out."));
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const r = await runLocalePipeline("appstore", app, [comp], "fr-FR", []);
-
-    expect(r.keywordBase.map((k) => k.keyword)).toEqual(["video editor"]);
-    expect(baseUsed()).toEqual(["video editor"]);
-    // I1: the degrade is silent to the caller but must be observable in logs.
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0][0]).toContain("fr-FR");
+    await expect(runLocalePipeline("appstore", app, [comp], "fr-FR", [])).rejects.toThrow(
+      /Keyword translation to fr-FR failed/
+    );
+    // 1 essai + 2 retries sur erreur reseau, puis echec; aucune fiche generee.
+    expect(mTranslate).toHaveBeenCalledTimes(3);
+    expect(mGenerate).not.toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 
-  it("degrades to the untranslated base when translation returns empty", async () => {
+  it("does not retry a non-network translation error", async () => {
     mExtract.mockResolvedValue(new Map([["video editor", 5]]));
-    mTranslate.mockResolvedValue([]);
+    mTranslate.mockRejectedValue(new Error("Unexpected token in JSON"));
+
+    await expect(runLocalePipeline("appstore", app, [comp], "fr-FR", [])).rejects.toThrow(
+      /failed/
+    );
+    expect(mTranslate).toHaveBeenCalledTimes(1);
+    expect(mGenerate).not.toHaveBeenCalled();
+  });
+
+  it("recovers when a transient network error clears on retry", async () => {
+    mExtract.mockResolvedValue(new Map([["video editor", 5]]));
+    mTranslate
+      .mockRejectedValueOnce(Object.assign(new Error("getaddrinfo EAI_AGAIN api.deepseek.com"), { code: "EAI_AGAIN" }))
+      .mockResolvedValueOnce([kw("editeur video")]);
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const r = await runLocalePipeline("appstore", app, [comp], "fr-FR", []);
 
-    expect(r.keywordBase.map((k) => k.keyword)).toEqual(["video editor"]);
-    expect(baseUsed()).toEqual(["video editor"]);
-    // I1: the degrade is silent to the caller but must be observable in logs.
-    expect(warnSpy).toHaveBeenCalledTimes(1);
-    expect(warnSpy.mock.calls[0][0]).toContain("fr-FR");
+    expect(mTranslate).toHaveBeenCalledTimes(2);
+    expect(r.keywordBase.map((k) => k.keyword)).toEqual(["editeur video"]);
     warnSpy.mockRestore();
+  });
+
+  it("fails the locale when translation returns empty", async () => {
+    mExtract.mockResolvedValue(new Map([["video editor", 5]]));
+    mTranslate.mockResolvedValue([]);
+
+    await expect(runLocalePipeline("appstore", app, [comp], "fr-FR", [])).rejects.toThrow(
+      /returned no keyword/
+    );
+    expect(mGenerate).not.toHaveBeenCalled();
   });
 });

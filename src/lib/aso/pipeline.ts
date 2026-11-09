@@ -1,3 +1,4 @@
+import { withNetworkRetry } from "@/lib/ai/retry";
 import { fetchAppMetadata } from "@/lib/scrapers";
 import type { StorePlatform } from "@/types";
 
@@ -26,7 +27,9 @@ async function extractCompetitorKeywords(
   meta: Awaited<ReturnType<typeof fetchAppMetadata>>
 ): Promise<Map<string, number>> {
   try {
-    return await extractKeywordsLLM(meta);
+    return await withNetworkRetry(() => extractKeywordsLLM(meta), {
+      label: "extract competitor keywords",
+    });
   } catch {
     return new Map();
   }
@@ -83,7 +86,8 @@ export async function resolveEnglishBase(
  * est faite en une passe par runLocalePipeline apres fusion des features).
  * 1. Locale anglaise: la base canonique EST l'extraction en-US cachee, on la reutilise.
  * 2. Extraction native de la locale cible; si non vide, on la prend.
- * 3. Repli: base anglaise cachee renvoyee TELLE QUELLE (non traduite).
+ * 3. Repli: base anglaise cachee renvoyee TELLE QUELLE (traduite ensuite par
+ *    runLocalePipeline; si cette traduction echoue, la locale echoue).
  * 4. Echec seulement si ni natif ni base anglaise ne donnent rien.
  */
 async function buildKeywordBase(
@@ -112,31 +116,34 @@ async function buildKeywordBase(
 }
 
 /**
- * Traduit la base fusionnee vers la locale cible. Degrade sur echec (OpenAI deja
- * retente 5x) ou reponse vide en renvoyant la base non traduite, pour ne pas
- * bloquer la locale (meme logique degrade-sans-echec que extractCompetitorKeywords).
- * L'anglais peut alors fuir sur une fiche non anglaise; choix assume (spec Q10).
+ * Traduit la base fusionnee vers la locale cible. Les erreurs reseau / timeout
+ * sont retentees (withNetworkRetry, en plus des retries du SDK). Si la traduction
+ * echoue quand meme, ou revient vide, la LOCALE ECHOUE (erreur remontee a
+ * generateAso -> `failed`, relancable) : on ne genere plus une fiche non anglaise
+ * a partir de mots cles anglais (l'anglais fuyait dans les fiches).
  */
-async function translateBaseOrDegrade(
+async function translateBaseOrFail(
   base: KeywordEntry[],
   locale: string
 ): Promise<KeywordEntry[]> {
+  let translated: KeywordEntry[];
   try {
-    const translated = await translateKeywords(base, locale);
-    if (translated.length === 0) {
-      console.warn(
-        `[aso pipeline] ${locale}: translation returned empty; degrading to untranslated base (${base.length} keyword(s)). English may appear on a non-English listing.`
-      );
-      return base;
-    }
-    return translated;
+    translated = await withNetworkRetry(() => translateKeywords(base, locale), {
+      label: `translate keywords ${locale}`,
+    });
   } catch (err) {
-    console.warn(
-      `[aso pipeline] ${locale}: translation failed, degrading to untranslated base (${base.length} keyword(s)). English may appear on a non-English listing.`,
-      err
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Keyword translation to ${locale} failed (${reason}). Listing not generated; retry this language.`,
+      { cause: err }
     );
-    return base;
   }
+  if (translated.length === 0) {
+    throw new Error(
+      `Keyword translation to ${locale} returned no keyword. Listing not generated; retry this language.`
+    );
+  }
+  return translated;
 }
 
 /**
@@ -173,15 +180,12 @@ export async function runLocalePipeline(
     const merged = mergeFeatureKeywords(base, app.features ?? []);
     keywordBase = isEnglishLocale(locale)
       ? merged
-      : await translateBaseOrDegrade(merged, locale);
+      : await translateBaseOrFail(merged, locale);
   }
 
-  const listing = await generateListingCopy(
-    store,
-    app,
-    locale,
-    keywordBase,
-    app.privacyPolicyUrl ?? ""
+  const listing = await withNetworkRetry(
+    () => generateListingCopy(store, app, locale, keywordBase, app.privacyPolicyUrl ?? ""),
+    { label: `generate listing ${locale}` }
   );
   return { locale, keywordBase, listing };
 }

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { ChatCompletionCreateParamsNonStreaming } from "openai/resources/chat/completions";
+import { Agent } from "undici";
 
 import { ensureJsonWord, parseJsonStripNul } from "./openai";
 
@@ -19,6 +20,10 @@ export function getDeepSeek(): OpenAI {
       baseURL: "https://api.deepseek.com",
       maxRetries: 5,
       timeout: 240_000,
+      // IPv4 forcé: api.deepseek.com n'a pas d'AAAA, et certains résolveurs DNS
+      // laissent la requête AAAA sans réponse (~15 s). Node (AF_UNSPEC) attend
+      // alors IPv6 et undici abandonne la connexion à 10 s: "Request timed out".
+      fetchOptions: { dispatcher: new Agent({ connect: { family: 4, autoSelectFamily: false } }) },
     });
   }
   return client;
