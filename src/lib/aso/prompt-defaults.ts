@@ -7,7 +7,7 @@ export type PromptTemplate = { system: string; user: string };
  *
  * Templates use `{{var}}` substitution (see renderTemplate). `{{#if name}}...
  * {{/if}}` keeps its body only when `name` is a non-empty string variable —
- * used for the privacy lines of the listing prompts.
+ * used for the website / privacy / terms lines of the listing prompts.
  */
 export const DEFAULTS: Record<string, PromptTemplate> = {
   // Competitor keyword extraction. Existing key (0009_prompts.sql), kept as-is.
@@ -120,14 +120,16 @@ You write an optimized listing in the language "{{locale}}" for the app "{{app_n
 ABSOLUTE RULE: use the provided keywords STRICTLY as given (identical spelling and form, case may be adapted), do not translate them: they are already in the target language. Do not invent new keywords in the title and short fields.
 Make sure the strongest keywords (those at the top of the list) all appear in the "description", woven naturally into paragraphs and bullet lists.
 FORBIDDEN: no markdown (no ###, no **, no _). Stores display plain text: paragraphs separated by blank lines, lists with simple dashes "- " or bullets "• ".
-{{#if privacy}}Do NOT add a privacy policy link or line in "description": the code automatically appends a final line "label: URL". Provide only the translated label in "privacyLabel".
+{{#if legal}}Do NOT add any website, privacy policy or terms of use link or line in "description": the code automatically appends the final "label: URL" lines. Provide only the translated labels requested below.
 {{/if}}Prioritize the first keywords in the list (the strongest) in the title and short fields.
 Respond ONLY in JSON with exactly these keys:
 - "title": App Store title (max 30 characters)
 - "subtitle": subtitle (max 30 characters)
 - "description": full description (max 4000 characters, paragraphs + bullet lists)
-- "keywords": App Store keywords field (max 100 characters, comma-separated words WITHOUT spaces, taken from the provided keyword list exactly as given (already in "{{locale}}"), without repeating words used in the title or subtitle){{#if privacy}}
-- "privacyLabel": short label translated into "{{locale}}" for the privacy policy (e.g. "Privacy Policy", "Politique de confidentialité"), WITHOUT the URL or the colon{{/if}}`,
+- "keywords": App Store keywords field (max 100 characters, comma-separated words WITHOUT spaces, taken from the provided keyword list exactly as given (already in "{{locale}}"), without repeating words used in the title or subtitle){{#if website}}
+- "websiteLabel": short label translated into "{{locale}}" for the official website (e.g. "Website", "Site web"), WITHOUT the URL or the colon{{/if}}{{#if privacy}}
+- "privacyLabel": short label translated into "{{locale}}" for the privacy policy (e.g. "Privacy Policy", "Politique de confidentialité"), WITHOUT the URL or the colon{{/if}}{{#if terms}}
+- "termsLabel": short label translated into "{{locale}}" for the terms of use (e.g. "Terms of Use", "Conditions d'utilisation"), WITHOUT the URL or the colon{{/if}}`,
     user: `Keywords to use (order = decreasing importance):
 {{keyword_list}}
 
@@ -143,13 +145,15 @@ Make sure the strongest keywords (those at the top of the list) all appear in th
 TRUTHFULNESS (overrides every other rule): the first entries of the keyword list are full sentences describing the app's REAL features. Describe ONLY those capabilities. The other keywords come from competitor apps: use one only where it truthfully names one of those real features; otherwise leave it out. Never claim a capability that is not in those feature sentences (e.g. measuring with the camera or sensors, step counting, BMI, stress, sleep, weather, diet plans, food scanning). Never write "no ads", "ad-free", "free" or "no subscription" unless a feature sentence says so. Never claim the app diagnoses, treats, monitors or manages a disease or medical condition. Never mention ratings, user counts or awards.
 The "description" should be between 2000 and 4000 characters: Google Play indexes it for search, but never pad it with invented features — repeat and detail the real ones instead.
 FORBIDDEN: no markdown (no ###, no **, no _). Stores display plain text: paragraphs separated by blank lines, lists with simple dashes "- " or bullets "• ".
-{{#if privacy}}Do NOT add a privacy policy link or line in "description": the code automatically appends a final line "label: URL". Provide only the translated label in "privacyLabel".
+{{#if legal}}Do NOT add any website, privacy policy or terms of use link or line in "description": the code automatically appends the final "label: URL" lines. Provide only the translated labels requested below.
 {{/if}}Prioritize the first keywords in the list (the strongest) in the title and short fields.
 Respond ONLY in JSON with exactly these keys:
 - "title": Google Play title (max 30 characters)
 - "shortDescription": short description (max 80 characters)
-- "description": long description, between 3000 and 4000 characters (paragraphs + bullet lists){{#if privacy}}
-- "privacyLabel": short label translated into "{{locale}}" for the privacy policy (e.g. "Privacy Policy", "Politique de confidentialité"), WITHOUT the URL or the colon{{/if}}`,
+- "description": long description, between 3000 and 4000 characters (paragraphs + bullet lists){{#if website}}
+- "websiteLabel": short label translated into "{{locale}}" for the official website (e.g. "Website", "Site web"), WITHOUT the URL or the colon{{/if}}{{#if privacy}}
+- "privacyLabel": short label translated into "{{locale}}" for the privacy policy (e.g. "Privacy Policy", "Politique de confidentialité"), WITHOUT the URL or the colon{{/if}}{{#if terms}}
+- "termsLabel": short label translated into "{{locale}}" for the terms of use (e.g. "Terms of Use", "Conditions d'utilisation"), WITHOUT the URL or the colon{{/if}}`,
     user: `Keywords to use (order = decreasing importance):
 {{keyword_list}}
 

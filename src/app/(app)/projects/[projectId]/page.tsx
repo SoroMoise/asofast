@@ -9,7 +9,7 @@ import { GenerateCta } from "@/components/dashboard/generate-cta";
 import { ListingTabs } from "@/components/dashboard/listing-tabs";
 import { LocalesEditor } from "@/components/dashboard/locales-editor";
 import { MarkPublishedButton } from "@/components/dashboard/mark-published-button";
-import { PrivacyPolicyEditor } from "@/components/dashboard/privacy-policy-editor";
+import { LegalLinksEditor } from "@/components/dashboard/legal-links-editor";
 import { WhatsNewEditor } from "@/components/dashboard/whats-new-editor";
 import { ProjectBusyProvider } from "@/components/dashboard/project-busy";
 import { PublishCta } from "@/components/dashboard/publish-cta";
@@ -115,13 +115,15 @@ export default async function ProjectDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>Privacy policy</CardTitle>
+          <CardTitle>Website &amp; legal links</CardTitle>
         </CardHeader>
         <CardContent>
-          <PrivacyPolicyEditor
+          <LegalLinksEditor
             projectId={project.id}
             store={project.store}
-            initial={project.privacy_policy_url ?? ""}
+            initialWebsite={project.website_url ?? ""}
+            initialPrivacy={project.privacy_policy_url ?? ""}
+            initialTerms={project.terms_url ?? ""}
           />
         </CardContent>
       </Card>

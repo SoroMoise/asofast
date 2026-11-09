@@ -15,7 +15,9 @@ vi.mock("@/lib/db", () => ({
 import { appendLegalLinks, buildUpdatesFromListings } from "./index";
 
 const APPLE_EULA_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula";
+const SITE = "https://example.com";
 const PRIVACY = "https://example.com/privacy";
+const TERMS = "https://example.com/terms";
 
 // --- appendLegalLinks ------------------------------------------------------
 
@@ -25,33 +27,33 @@ describe("appendLegalLinks", () => {
   // Hors d'atteinte tant qu'un gate interdisait de publier sans URL privacy, à
   // portée depuis sa suppression.
   it("still appends the Apple EULA when there is no privacy URL (the bug)", () => {
-    const out = appendLegalLinks("Ma description.", "appstore", "");
+    const out = appendLegalLinks("Ma description.", "appstore", {});
     expect(out).toContain(`EULA : ${APPLE_EULA_URL}`);
     expect(out).not.toContain("Privacy policy :");
   });
 
   it("appends both links when the privacy URL is set", () => {
-    const out = appendLegalLinks("Ma description.", "appstore", PRIVACY);
+    const out = appendLegalLinks("Ma description.", "appstore", { privacyPolicyUrl: PRIVACY });
     expect(out).toContain(`Privacy policy : ${PRIVACY}`);
     expect(out).toContain(`EULA : ${APPLE_EULA_URL}`);
   });
 
   it("does not duplicate a link already present", () => {
     const described = `Ma description.\n\nPrivacy policy : ${PRIVACY}`;
-    const out = appendLegalLinks(described, "appstore", PRIVACY);
+    const out = appendLegalLinks(described, "appstore", { privacyPolicyUrl: PRIVACY });
     expect(out?.match(/Privacy policy :/g)).toHaveLength(1);
     expect(out).toContain(`EULA : ${APPLE_EULA_URL}`);
   });
 
   it("leaves a description that already has both links untouched", () => {
     const described = `Ma description.\n\nPrivacy policy : ${PRIVACY}\nEULA : ${APPLE_EULA_URL}`;
-    expect(appendLegalLinks(described, "appstore", PRIVACY)).toBe(described);
+    expect(appendLegalLinks(described, "appstore", { privacyPolicyUrl: PRIVACY })).toBe(described);
   });
 
   it("never adds an EULA on Play Store", () => {
-    expect(appendLegalLinks("Ma description.", "playstore", PRIVACY)).not.toContain("EULA");
+    expect(appendLegalLinks("Ma description.", "playstore", { privacyPolicyUrl: PRIVACY })).not.toContain("EULA");
     // Play + URL vide: plus rien à ajouter, description rendue telle quelle.
-    expect(appendLegalLinks("Ma description.", "playstore", "")).toBe("Ma description.");
+    expect(appendLegalLinks("Ma description.", "playstore", {})).toBe("Ma description.");
   });
 
   it("adds the privacy line even though includes('') is true for any string", () => {
@@ -59,18 +61,45 @@ describe("appendLegalLinks", () => {
     // ferait sauter la ligne pour toute URL, puisque `"abc".includes("")` vaut
     // true. L'ordre des tests est donc porteur de sens, pas cosmétique.
     expect("abc".includes("")).toBe(true);
-    expect(appendLegalLinks("abc", "playstore", PRIVACY)).toContain(`Privacy policy : ${PRIVACY}`);
+    expect(appendLegalLinks("abc", "playstore", { privacyPolicyUrl: PRIVACY })).toContain(`Privacy policy : ${PRIVACY}`);
   });
 
   it("keeps the whole suffix by truncating the description under 4000 chars", () => {
-    const out = appendLegalLinks("x".repeat(4000), "appstore", PRIVACY);
+    const out = appendLegalLinks("x".repeat(4000), "appstore", { privacyPolicyUrl: PRIVACY });
     expect(out?.length).toBeLessThanOrEqual(4000);
     expect(out).toContain(`Privacy policy : ${PRIVACY}`);
     expect(out).toContain(`EULA : ${APPLE_EULA_URL}`);
   });
 
+  it("appends website, privacy and terms lines, in that order", () => {
+    const out = appendLegalLinks("Ma description.", "playstore", {
+      websiteUrl: SITE,
+      privacyPolicyUrl: PRIVACY,
+      termsUrl: TERMS,
+    });
+    expect(out).toBe(
+      `Ma description.\n\nWebsite : ${SITE}\nPrivacy policy : ${PRIVACY}\nTerms of use : ${TERMS}`
+    );
+  });
+
+  it("adds the website line even though the privacy URL starts with it", () => {
+    // Piège: `includes(SITE)` est vrai dès que l'URL privacy est présente.
+    const described = `Ma description.\n\nPrivacy policy : ${PRIVACY}`;
+    const out = appendLegalLinks(described, "playstore", {
+      websiteUrl: SITE,
+      privacyPolicyUrl: PRIVACY,
+    });
+    expect(out).toContain(`Website : ${SITE}`);
+    expect(out?.match(/Privacy policy :/g)).toHaveLength(1);
+  });
+
+  it("does not duplicate a website already in the description (trailing slash too)", () => {
+    const described = `Visit ${SITE}/.`;
+    expect(appendLegalLinks(described, "playstore", { websiteUrl: SITE })).toBe(described);
+  });
+
   it("returns undefined for an absent description", () => {
-    expect(appendLegalLinks(undefined, "appstore", PRIVACY)).toBeUndefined();
+    expect(appendLegalLinks(undefined, "appstore", { privacyPolicyUrl: PRIVACY })).toBeUndefined();
   });
 });
 

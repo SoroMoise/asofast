@@ -48,7 +48,12 @@ export type Project = {
   screenshot_style: string | null;
   screenshot_captions: SourceCaption[];
   screenshot_captions_tablet: SourceCaption[];
+  /** URL de base du site de l'app (ajoutée en fin de description, référencement). */
+  website_url: string;
+  /** URL complète résolue de la politique de confidentialité. */
   privacy_policy_url: string;
+  /** URL complète résolue des conditions d'utilisation. */
+  terms_url: string;
   whats_new: string | null;
   competitor_keywords_en: { keyword: string; competitors: number; occurrences: number }[];
   competitor_keywords_key: string | null;

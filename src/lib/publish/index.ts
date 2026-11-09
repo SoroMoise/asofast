@@ -10,6 +10,7 @@ import {
   localeFeatureGraphicDir,
   localeFeatureGraphicPaths,
 } from "@/lib/aso/feature-graphic-layout";
+import { missingLegalLines, projectLegalLinks, type LegalLinks } from "@/lib/legal-links";
 import { listFiles, readFile } from "@/lib/storage";
 import type { Generation, Listing, Project, StorePlatform } from "@/types";
 
@@ -83,16 +84,24 @@ function str(value: unknown): string | undefined {
 const APPLE_EULA_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula";
 const DESCRIPTION_MAX = 4000;
 
+/**
+ * Filet à la publication: ajoute en fin de description les lignes site,
+ * privacy policy et conditions d'utilisation absentes (fiches générées avant
+ * l'ajout d'un lien), + EULA Apple sur App Store. Libellés anglais: les
+ * libellés traduits sont posés à la génération.
+ */
 export function appendLegalLinks(
   description: string | undefined,
   store: StorePlatform,
-  privacyUrl: string
+  links: LegalLinks
 ): string | undefined {
   if (!description) return description;
-  const lines: string[] = [];
-  if (privacyUrl && !description.includes(privacyUrl)) {
-    lines.push(`Privacy policy : ${privacyUrl}`);
-  }
+  const lines = missingLegalLines(
+    description,
+    links,
+    { website: "Website", privacy: "Privacy policy", terms: "Terms of use" },
+    " : "
+  );
   if (store === "appstore" && !description.includes(APPLE_EULA_URL)) {
     lines.push(`EULA : ${APPLE_EULA_URL}`);
   }
@@ -294,7 +303,7 @@ export async function buildUpdatesFromListings(
         description: appendLegalLinks(
           str(listing.description),
           project.store,
-          (project.privacy_policy_url ?? "").trim()
+          projectLegalLinks(project)
         ),
         keywords: keywords.length > 0 ? keywords : undefined,
       };
