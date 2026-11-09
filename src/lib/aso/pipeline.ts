@@ -1,4 +1,5 @@
 import { withNetworkRetry } from "@/lib/ai/retry";
+import type { LegalLinks } from "@/lib/legal-links";
 import { fetchAppMetadata } from "@/lib/scrapers";
 import type { StorePlatform } from "@/types";
 
@@ -159,7 +160,7 @@ export async function runLocalePipeline(
     name: string;
     developer: string | null;
     features?: string[];
-    privacyPolicyUrl?: string;
+    legalLinks?: LegalLinks;
   },
   competitors: AppRef[],
   locale: string,
@@ -184,7 +185,7 @@ export async function runLocalePipeline(
   }
 
   const listing = await withNetworkRetry(
-    () => generateListingCopy(store, app, locale, keywordBase, app.privacyPolicyUrl ?? ""),
+    () => generateListingCopy(store, app, locale, keywordBase, app.legalLinks ?? {}),
     { label: `generate listing ${locale}` }
   );
   return { locale, keywordBase, listing };

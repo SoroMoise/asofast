@@ -45,6 +45,13 @@ import {
   updateProject as dbUpdateProject,
   upsertListing as dbUpsertListing,
 } from "@/lib/db";
+import {
+  isAbsoluteHttpUrl,
+  isHttpUrl,
+  normalizeBaseUrl,
+  projectLegalLinks,
+  resolveLegalUrl,
+} from "@/lib/legal-links";
 import { isValidLocale } from "@/lib/locales";
 import { resolveLocaleWhatsNew, WHATS_NEW_MAX } from "@/lib/publish/whats-new";
 import { parseListing, parseProject } from "@/lib/db/parse";
@@ -187,24 +194,58 @@ export async function updateProjectFeatures(input: {
   return {};
 }
 
-export async function updateProjectPrivacyPolicy(input: {
+/**
+ * Site + liens légaux du projet. L'URL de base du site est saisie une fois; la
+ * politique de confidentialité et les conditions d'utilisation acceptent un
+ * chemin (`/privacy`) collé à la base, ou une URL complète. On stocke les URL
+ * complètes résolues.
+ */
+export async function updateProjectLegalLinks(input: {
   projectId: string;
-  url: string;
+  websiteUrl: string;
+  privacyPolicy: string;
+  terms: string;
 }): Promise<{ error?: string }> {
   const project = dbGetProject(input.projectId);
   if (!project) return { error: "Project not found." };
 
-  const url = String(input.url ?? "").trim().slice(0, 500);
-  if (url) {
-    try {
-      const parsed = new URL(url);
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error();
-    } catch {
-      return { error: "Invalid URL: a full http(s) link is expected." };
-    }
+  const websiteUrl = normalizeBaseUrl(String(input.websiteUrl ?? "").slice(0, 500));
+  if (websiteUrl && !isHttpUrl(websiteUrl)) {
+    return { error: "Invalid website URL: a full http(s) link is expected (e.g. https://your-site.com)." };
+  }
+  // Les chemins sont collés par chaîne à la base: une query ou un fragment
+  // donnerait `https://site.com/?x=1/privacy`.
+  if (websiteUrl && /[?#]/.test(websiteUrl)) {
+    return { error: "Invalid website URL: remove the ?query or #fragment part." };
   }
 
-  dbUpdateProject(project.id as string, { privacy_policy_url: url });
+  const resolve = (raw: unknown, what: string): { url: string } | { error: string } => {
+    const value = String(raw ?? "").trim().slice(0, 500);
+    if (!value) return { url: "" };
+    if (/\s/.test(value)) return { error: `Invalid ${what} link: spaces are not allowed.` };
+    // Une URL sans schéma (`www.site.com/privacy`) serait sinon collée comme un
+    // chemin: `https://site.com/www.site.com/privacy`.
+    if (!isAbsoluteHttpUrl(value) && /^(www\.|[\w-]+(\.[\w-]+)+\/)/i.test(value)) {
+      return { error: `Invalid ${what} link: start a full link with https://.` };
+    }
+    if (!isAbsoluteHttpUrl(value) && !websiteUrl) {
+      return { error: `Enter the website URL first, or a full http(s) link for the ${what}.` };
+    }
+    const url = resolveLegalUrl(websiteUrl, value);
+    if (!isHttpUrl(url)) return { error: `Invalid ${what} link.` };
+    return { url };
+  };
+
+  const privacy = resolve(input.privacyPolicy, "privacy policy");
+  if ("error" in privacy) return { error: privacy.error };
+  const terms = resolve(input.terms, "terms of use");
+  if ("error" in terms) return { error: terms.error };
+
+  dbUpdateProject(project.id as string, {
+    website_url: websiteUrl,
+    privacy_policy_url: privacy.url,
+    terms_url: terms.url,
+  });
   revalidatePath(`/projects/${project.id as string}`);
   return {};
 }
@@ -333,7 +374,7 @@ export async function generateAso(input: {
     name: project.app_name ?? project.name,
     developer: project.developer_name,
     features: project.features ?? [],
-    privacyPolicyUrl: project.privacy_policy_url ?? "",
+    legalLinks: projectLegalLinks(project),
   };
 
   let englishBase: KeywordEntry[] = [];
@@ -380,7 +421,7 @@ export async function generateAso(input: {
         description: ensureLegalLines(
           result.listing.description,
           project.store,
-          app.privacyPolicyUrl
+          app.legalLinks
         ),
         keywords: result.listing.keywords,
         keyword_base: result.keywordBase,

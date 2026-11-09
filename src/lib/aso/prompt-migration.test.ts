@@ -118,31 +118,45 @@ describe("prompt characterization (pre-migration lock)", () => {
   const keys = [kw("photo editor"), kw("filters")];
 
   it("aso_generate_listing_appstore (no privacy)", async () => {
-    await generateListingCopy("appstore", appStore, "fr-FR", keys, "");
+    await generateListingCopy("appstore", appStore, "fr-FR", keys, {});
     expect(mComplete.mock.calls[0][0]).toMatchSnapshot("system");
     expect(mComplete.mock.calls[0][1]).toMatchSnapshot("user");
   });
 
   it("aso_generate_listing_appstore (with privacy)", async () => {
-    await generateListingCopy("appstore", appStore, "fr-FR", keys, "https://ex/privacy");
+    await generateListingCopy("appstore", appStore, "fr-FR", keys, { privacyPolicyUrl: "https://ex/privacy" });
     expect(mComplete.mock.calls[0][0]).toMatchSnapshot("system");
     expect(mComplete.mock.calls[0][1]).toMatchSnapshot("user");
   });
 
   it("aso_generate_listing_playstore (no privacy)", async () => {
-    await generateListingCopy("playstore", appStore, "fr-FR", keys, "");
+    await generateListingCopy("playstore", appStore, "fr-FR", keys, {});
     expect(mComplete.mock.calls[0][0]).toMatchSnapshot("system");
     expect(mComplete.mock.calls[0][1]).toMatchSnapshot("user");
   });
 
   it("aso_generate_listing_playstore (with privacy)", async () => {
-    await generateListingCopy("playstore", appStore, "fr-FR", keys, "https://ex/privacy");
+    await generateListingCopy("playstore", appStore, "fr-FR", keys, { privacyPolicyUrl: "https://ex/privacy" });
     expect(mComplete.mock.calls[0][0]).toMatchSnapshot("system");
     expect(mComplete.mock.calls[0][1]).toMatchSnapshot("user");
   });
 
+  it("aso_generate_listing_appstore (website + privacy + terms)", async () => {
+    await generateListingCopy("appstore", appStore, "fr-FR", keys, {
+      websiteUrl: "https://ex",
+      privacyPolicyUrl: "https://ex/privacy",
+      termsUrl: "https://ex/terms",
+    });
+    expect(mComplete.mock.calls[0][0]).toMatchSnapshot("system");
+  });
+
+  it("aso_generate_listing_playstore (website only)", async () => {
+    await generateListingCopy("playstore", appStore, "fr-FR", keys, { websiteUrl: "https://ex" });
+    expect(mComplete.mock.calls[0][0]).toMatchSnapshot("system");
+  });
+
   it("appstore developer-less name has no developer suffix", async () => {
-    await generateListingCopy("appstore", { name: "Solo", developer: null }, "en-US", keys, "");
+    await generateListingCopy("appstore", { name: "Solo", developer: null }, "en-US", keys, {});
     expect(mComplete.mock.calls[0][0]).toMatchSnapshot("system");
   });
 });

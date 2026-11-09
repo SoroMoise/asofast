@@ -46,6 +46,13 @@ function migrate(): void {
       "update projects set published = 0 where icon_url is null and developer_name is null"
     );
   }
+  // Liens site + conditions d'utilisation, à côté de la privacy policy.
+  if (!columns.some((c) => c.name === "website_url")) {
+    db.exec("alter table projects add column website_url text not null default ''");
+  }
+  if (!columns.some((c) => c.name === "terms_url")) {
+    db.exec("alter table projects add column terms_url text not null default ''");
+  }
 }
 
 // ============================================================================
