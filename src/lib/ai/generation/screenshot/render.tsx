@@ -1,8 +1,7 @@
 import { renderAsync } from "@resvg/resvg-js";
 import satori from "satori";
-
 import type { ScreenshotStyle } from "@/lib/ai/types";
-
+import { isRtlLocale, rtlTokens } from "@/lib/aso/feature-graphic-layout";
 import { loadScriptFonts, type LoadedFonts } from "./fonts";
 
 const WEIGHT_MAP = { regular: 400, semibold: 600, bold: 700 } as const;
@@ -60,11 +59,18 @@ const CAPTION_VERTICAL_FILL = 0.86;
 // et le khmer ont des glyphes nettement plus larges que Poppins: avec l'advance
 // latin (0.64 em) la simulation sous-estime la largeur, choisit une police trop
 // grande, et la caption deborde du haut de l'image (texte coupe).
-const WIDE_SCRIPT = /[\u0530-\u058F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0D80-\u0DFF\u1000-\u109F\u10A0-\u10FF\u1780-\u17FF]/;
+const WIDE_SCRIPT =
+  /[\u0530-\u058F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F\u0D80-\u0DFF\u1000-\u109F\u10A0-\u10FF\u1780-\u17FF]/;
 const WIDE_SCRIPT_ADVANCE = 0.95;
 
-function captionFontSize(width: number, caption: string, zoneHeight: number): number {
-  const advance = WIDE_SCRIPT.test(caption) ? WIDE_SCRIPT_ADVANCE : AVG_CHAR_ADVANCE;
+function captionFontSize(
+  width: number,
+  caption: string,
+  zoneHeight: number,
+): number {
+  const advance = WIDE_SCRIPT.test(caption)
+    ? WIDE_SCRIPT_ADVANCE
+    : AVG_CHAR_ADVANCE;
   const avail = width * 0.88; // padding de 0.06 de chaque cote
   const usableHeight = zoneHeight * CAPTION_VERTICAL_FILL;
   const words = caption.trim().split(/\s+/).filter(Boolean);
@@ -83,7 +89,8 @@ function captionFontSize(width: number, caption: string, zoneHeight: number): nu
       const wordWidth = word.length * advance * font;
       if (wordWidth > avail) return null; // mot seul trop large a cette taille
       if (lineWidth === 0) lineWidth = wordWidth;
-      else if (lineWidth + spaceWidth + wordWidth <= avail) lineWidth += spaceWidth + wordWidth;
+      else if (lineWidth + spaceWidth + wordWidth <= avail)
+        lineWidth += spaceWidth + wordWidth;
       else {
         lines++;
         lineWidth = wordWidth;
@@ -126,22 +133,28 @@ export type RenderedFrame = {
  * Compose one marketing screenshot: styled background + caption + the user's
  * screenshot rendered as-is (no device mockup), filling the remaining space.
  */
-export async function renderFrame(opts: RenderFrameOptions): Promise<RenderedFrame> {
-  const { width, height, style, caption, screenshotDataUrl, fonts, locale } = opts;
+export async function renderFrame(
+  opts: RenderFrameOptions,
+): Promise<RenderedFrame> {
+  const { width, height, style, caption, screenshotDataUrl, fonts, locale } =
+    opts;
 
   const displayCaption = applyCase(stripEmoji(caption), style.captionCase);
   // Polices par script pour la caption: on fournit explicitement a Satori la
   // bonne police (arabe, indiennes, CJK, cyrillique, etc.) au lieu de le laisser
   // en chercher une en reseau au moment du rendu (lent, timeouts en prod). Une
   // caption latine ou devanagari renvoie [] et reste sur Poppins.
-  const { fonts: scriptFonts, missing } = await loadScriptFonts(displayCaption, locale);
+  const { fonts: scriptFonts, missing } = await loadScriptFonts(
+    displayCaption,
+    locale,
+  );
   // Une police de script manquante ne degrade pas: satori dessinerait des carres
   // vides et le PNG partirait quand meme sur le store. On echoue la langue, fort
   // et clair. Les autres langues du lot ne sont pas affectees (le pipeline
   // attrape par langue).
   if (missing.length > 0) {
     throw new Error(
-      `Script font unavailable (${missing.join(", ")}): the caption would render as empty boxes.`
+      `Script font unavailable (${missing.join(", ")}): the caption would render as empty boxes.`,
     );
   }
   const fontWeight = WEIGHT_MAP[style.fontWeight];
@@ -150,6 +163,8 @@ export async function renderFrame(opts: RenderFrameOptions): Promise<RenderedFra
   const captionZoneH = Math.round(height * 0.2);
   const imageZoneH = height - captionZoneH;
   const fontSize = captionFontSize(width, displayCaption, captionZoneH);
+  const rtl = locale ? isRtlLocale(locale) : false;
+  const wordGap = Math.round(fontSize * 0.13);
 
   const background = style.backgroundGradientTo
     ? `linear-gradient(160deg, ${style.backgroundColor}, ${style.backgroundGradientTo})`
@@ -177,9 +192,24 @@ export async function renderFrame(opts: RenderFrameOptions): Promise<RenderedFra
           lineHeight: CAPTION_LINE_HEIGHT,
           maxWidth: "100%",
           wordBreak: "break-word",
+          ...(rtl
+            ? {
+                flexDirection: "row-reverse" as const,
+                flexWrap: "wrap" as const,
+              }
+            : {}),
         }}
       >
-        {displayCaption}
+        {rtl
+          ? rtlTokens(displayCaption).map((token, i) => (
+              <span
+                key={i}
+                style={{ marginLeft: wordGap, marginRight: wordGap }}
+              >
+                {token}
+              </span>
+            ))
+          : displayCaption}
       </div>
     </div>
   );
@@ -236,9 +266,24 @@ export async function renderFrame(opts: RenderFrameOptions): Promise<RenderedFra
     width,
     height,
     fonts: [
-      { name: "Poppins", data: fonts.regular, weight: 400 as const, style: "normal" as const },
-      { name: "Poppins", data: fonts.semibold, weight: 600 as const, style: "normal" as const },
-      { name: "Poppins", data: fonts.bold, weight: 700 as const, style: "normal" as const },
+      {
+        name: "Poppins",
+        data: fonts.regular,
+        weight: 400 as const,
+        style: "normal" as const,
+      },
+      {
+        name: "Poppins",
+        data: fonts.semibold,
+        weight: 600 as const,
+        style: "normal" as const,
+      },
+      {
+        name: "Poppins",
+        data: fonts.bold,
+        weight: 700 as const,
+        style: "normal" as const,
+      },
       // Polices par script (un seul poids Regular chacune, suffisant pour les
       // scripts non latins; le bold demande par la caption degrade proprement).
       ...scriptFonts.map((f) => ({
@@ -265,9 +310,13 @@ export async function renderFrame(opts: RenderFrameOptions): Promise<RenderedFra
   // partir en silence jusqu'a App Store Connect.
   if (rendered.width !== width || rendered.height !== height) {
     throw new Error(
-      `Frame rendered at ${rendered.width}x${rendered.height}, expected ${width}x${height}.`
+      `Frame rendered at ${rendered.width}x${rendered.height}, expected ${width}x${height}.`,
     );
   }
 
-  return { pixels: rendered.pixels, width: rendered.width, height: rendered.height };
+  return {
+    pixels: rendered.pixels,
+    width: rendered.width,
+    height: rendered.height,
+  };
 }

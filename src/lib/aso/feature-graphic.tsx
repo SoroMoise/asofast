@@ -14,11 +14,12 @@
 import { renderAsync } from "@resvg/resvg-js";
 import satori from "satori";
 import sharp from "sharp";
-
-import { loadFonts, loadScriptFonts } from "@/lib/ai/generation/screenshot/fonts";
+import {
+  loadFonts,
+  loadScriptFonts,
+} from "@/lib/ai/generation/screenshot/fonts";
 import { measurerFor } from "@/lib/aso/font-metrics";
 import { saveFile } from "@/lib/storage";
-
 import {
   BADGE_GAP,
   charAdvance,
@@ -30,6 +31,7 @@ import {
   isLightColor,
   isRtlLocale,
   localeFeatureGraphicPaths,
+  rtlTokens,
   textColumnBox,
   type FeatureGraphicTemplate,
   type FeatureGraphicTexts,
@@ -62,10 +64,13 @@ export async function renderFeatureGraphic(opts: {
 }): Promise<Buffer> {
   const { template, texts, artDataUrl, locale } = opts;
   const allText = [texts.headline, ...texts.badges].join(" ");
-  const [fonts, script] = await Promise.all([loadFonts(), loadScriptFonts(allText, locale)]);
+  const [fonts, script] = await Promise.all([
+    loadFonts(),
+    loadScriptFonts(allText, locale),
+  ]);
   if (script.missing.length > 0) {
     throw new Error(
-      `Script font unavailable (${script.missing.join(", ")}): the banner text would render as empty boxes.`
+      `Script font unavailable (${script.missing.join(", ")}): the banner text would render as empty boxes.`,
     );
   }
 
@@ -76,11 +81,17 @@ export async function renderFeatureGraphic(opts: {
   // Même ordre de repli que satori: Poppins de la graisse utilisée, puis script.
   const scriptData = script.fonts.map((f) => f.data);
   const measureHeadline = measurerFor([fonts.bold, ...scriptData], charAdvance);
-  const measureBadge = measurerFor([fonts.semibold, ...scriptData], charAdvance);
+  const measureBadge = measurerFor(
+    [fonts.semibold, ...scriptData],
+    charAdvance,
+  );
   const badgeSize =
-    texts.badges.length > 0 ? fitBadgeFontSize(texts.badges, fitWidth, measureBadge) : 0;
+    texts.badges.length > 0
+      ? fitBadgeFontSize(texts.badges, fitWidth, measureBadge)
+      : 0;
   // Réserve verticale des badges: au plus deux rangées (fitBadgeFontSize).
-  const badgeReserve = texts.badges.length > 0 ? Math.round((badgeSize + 18) * 2 + 10 + 24) : 0;
+  const badgeReserve =
+    texts.badges.length > 0 ? Math.round((badgeSize + 18) * 2 + 10 + 24) : 0;
   const headlineSize = texts.headline
     ? fitHeadlineFontSize({
         text: texts.headline,
@@ -113,7 +124,14 @@ export async function renderFeatureGraphic(opts: {
         alt=""
         width={W}
         height={H}
-        style={{ position: "absolute", left: 0, top: 0, width: W, height: H, objectFit: "cover" }}
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: W,
+          height: H,
+          objectFit: "cover",
+        }}
       />
       <div
         style={{
@@ -140,9 +158,26 @@ export async function renderFeatureGraphic(opts: {
               letterSpacing: -0.5,
               textAlign: rtl ? "right" : "left",
               textShadow: light ? "0 2px 14px rgba(0,0,0,0.25)" : "none",
+              ...(rtl
+                ? {
+                    flexDirection: "row-reverse" as const,
+                    flexWrap: "wrap" as const,
+                  }
+                : {}),
             }}
           >
-            {texts.headline}
+            {rtl
+              ? rtlTokens(texts.headline).map((token, i) => (
+                  <span
+                    key={i}
+                    style={{
+                      marginRight: i > 0 ? Math.round(headlineSize * 0.24) : 0,
+                    }}
+                  >
+                    {token}
+                  </span>
+                ))
+              : texts.headline}
           </div>
         ) : null}
         {texts.badges.length > 0 ? (
@@ -169,11 +204,27 @@ export async function renderFeatureGraphic(opts: {
                   fontSize: badgeSize,
                   fontWeight: 600,
                   color: template.textColor,
-                  background: light ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.06)",
-                  border: light ? "1.5px solid rgba(255,255,255,0.38)" : "1.5px solid rgba(0,0,0,0.18)",
+                  background: light
+                    ? "rgba(255,255,255,0.16)"
+                    : "rgba(0,0,0,0.06)",
+                  border: light
+                    ? "1.5px solid rgba(255,255,255,0.38)"
+                    : "1.5px solid rgba(0,0,0,0.18)",
+                  ...(rtl ? { flexDirection: "row-reverse" as const } : {}),
                 }}
               >
-                {badge}
+                {rtl
+                  ? rtlTokens(badge).map((token, j) => (
+                      <span
+                        key={j}
+                        style={{
+                          marginRight: j > 0 ? Math.round(badgeSize * 0.28) : 0,
+                        }}
+                      >
+                        {token}
+                      </span>
+                    ))
+                  : badge}
               </div>
             ))}
           </div>
@@ -186,9 +237,24 @@ export async function renderFeatureGraphic(opts: {
     width: W,
     height: H,
     fonts: [
-      { name: "Poppins", data: fonts.regular, weight: 400 as const, style: "normal" as const },
-      { name: "Poppins", data: fonts.semibold, weight: 600 as const, style: "normal" as const },
-      { name: "Poppins", data: fonts.bold, weight: 700 as const, style: "normal" as const },
+      {
+        name: "Poppins",
+        data: fonts.regular,
+        weight: 400 as const,
+        style: "normal" as const,
+      },
+      {
+        name: "Poppins",
+        data: fonts.semibold,
+        weight: 600 as const,
+        style: "normal" as const,
+      },
+      {
+        name: "Poppins",
+        data: fonts.bold,
+        weight: 700 as const,
+        style: "normal" as const,
+      },
       ...script.fonts.map((f) => ({
         name: f.name,
         data: f.data,
@@ -202,7 +268,9 @@ export async function renderFeatureGraphic(opts: {
     font: { loadSystemFonts: false },
   });
   if (rendered.width !== W || rendered.height !== H) {
-    throw new Error(`Banner rendered at ${rendered.width}x${rendered.height}, expected ${W}x${H}.`);
+    throw new Error(
+      `Banner rendered at ${rendered.width}x${rendered.height}, expected ${W}x${H}.`,
+    );
   }
   // Google Play refuse l'alpha sur le feature graphic: on aplatit sur le fond.
   return sharp(rendered.pixels, { raw: { width: W, height: H, channels: 4 } })
@@ -219,7 +287,7 @@ export async function saveLocaleFeatureGraphic(
     texts: FeatureGraphicTexts;
     manual: boolean;
     listing?: ListingHeadlineTexts | null;
-  }
+  },
 ): Promise<LocaleFeatureGraphic> {
   const jpeg = await renderFeatureGraphic({
     template: ctx.template,

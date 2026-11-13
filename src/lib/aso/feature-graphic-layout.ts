@@ -52,7 +52,10 @@ export function localeFeatureGraphicPaths(projectId: string, locale: string) {
  * localisé et optimisé ASO, aucune traduction). Le titre de la fiche répète le
  * nom affiché sous la bannière par Google Play: `custom` par défaut.
  */
-export type FeatureGraphicHeadlineSource = "custom" | "listingTitle" | "shortDescription";
+export type FeatureGraphicHeadlineSource =
+  | "custom"
+  | "listingTitle"
+  | "shortDescription";
 
 export type FeatureGraphicTemplate = {
   headlineSource: FeatureGraphicHeadlineSource;
@@ -104,18 +107,28 @@ export function truncateAtWord(text: string, max: number): string {
   if (text.length <= max) return text;
   const cut = text.slice(0, max + 1);
   const space = cut.lastIndexOf(" ");
-  return (space >= max / 2 ? cut.slice(0, space) : text.slice(0, max)).replace(/[\s,;:–-]+$/, "");
+  return (space >= max / 2 ? cut.slice(0, space) : text.slice(0, max)).replace(
+    /[\s,;:–-]+$/,
+    "",
+  );
 }
 
 function cleanText(value: unknown, max: number): string {
-  return typeof value === "string" ? truncateAtWord(value.replace(/\s+/g, " ").trim(), max) : "";
+  return typeof value === "string"
+    ? truncateAtWord(value.replace(/\s+/g, " ").trim(), max)
+    : "";
 }
 
 /** Valide/normalise un modèle venant du client ou du disque. Jamais de throw. */
-export function sanitizeFeatureGraphicTemplate(raw: unknown): FeatureGraphicTemplate {
+export function sanitizeFeatureGraphicTemplate(
+  raw: unknown,
+): FeatureGraphicTemplate {
   const r = (raw ?? {}) as Record<string, unknown>;
   const d = DEFAULT_FEATURE_GRAPHIC_TEMPLATE;
-  const width = typeof r.textWidth === "number" && Number.isFinite(r.textWidth) ? r.textWidth : d.textWidth;
+  const width =
+    typeof r.textWidth === "number" && Number.isFinite(r.textWidth)
+      ? r.textWidth
+      : d.textWidth;
   return {
     headlineSource:
       r.headlineSource === "custom" ||
@@ -133,7 +146,10 @@ export function sanitizeFeatureGraphicTemplate(raw: unknown): FeatureGraphicTemp
       .slice(0, MAX_BADGES),
     textSide: r.textSide === "right" ? "right" : "left",
     textWidth: Math.min(0.65, Math.max(0.35, width)),
-    textColor: typeof r.textColor === "string" && HEX.test(r.textColor) ? r.textColor : d.textColor,
+    textColor:
+      typeof r.textColor === "string" && HEX.test(r.textColor)
+        ? r.textColor
+        : d.textColor,
     backgroundColor:
       typeof r.backgroundColor === "string" && HEX.test(r.backgroundColor)
         ? r.backgroundColor
@@ -141,7 +157,8 @@ export function sanitizeFeatureGraphicTemplate(raw: unknown): FeatureGraphicTemp
     backgroundGradientTo:
       r.backgroundGradientTo === null || r.backgroundGradientTo === ""
         ? null
-        : typeof r.backgroundGradientTo === "string" && HEX.test(r.backgroundGradientTo)
+        : typeof r.backgroundGradientTo === "string" &&
+            HEX.test(r.backgroundGradientTo)
           ? r.backgroundGradientTo
           : d.backgroundGradientTo,
   };
@@ -160,7 +177,9 @@ export function sanitizeFeatureGraphicTexts(raw: unknown): FeatureGraphicTexts {
 }
 
 /** Relit le fichier .json d'une langue (anciens fichiers: textes seuls). */
-export function sanitizeStoredFeatureGraphic(raw: unknown): StoredFeatureGraphic {
+export function sanitizeStoredFeatureGraphic(
+  raw: unknown,
+): StoredFeatureGraphic {
   const r = (raw ?? {}) as Record<string, unknown>;
   return {
     ...sanitizeFeatureGraphicTexts(r),
@@ -182,12 +201,21 @@ export function featureGraphicFingerprintSource(opts: {
   listing?: ListingHeadlineTexts | null;
 }): string {
   const { template: t, artHash, manual } = opts;
-  const layout = [t.textSide, t.textWidth, t.textColor, t.backgroundColor, t.backgroundGradientTo];
+  const layout = [
+    t.textSide,
+    t.textWidth,
+    t.textColor,
+    t.backgroundColor,
+    t.backgroundGradientTo,
+  ];
   const text = manual
     ? null
     : {
         headlineSource: t.headlineSource,
-        headline: t.headlineSource === "custom" ? t.headline : listingHeadline(t, opts.listing),
+        headline:
+          t.headlineSource === "custom"
+            ? t.headline
+            : listingHeadline(t, opts.listing),
         badges: t.badges,
       };
   return JSON.stringify({ v: 1, layout, artHash, text });
@@ -195,19 +223,28 @@ export function featureGraphicFingerprintSource(opts: {
 
 /** Le modèle a-t-il quelque chose à écrire ? */
 export function templateHasText(tpl: FeatureGraphicTemplate): boolean {
-  return tpl.headlineSource !== "custom" || tpl.headline.length > 0 || tpl.badges.length > 0;
+  return (
+    tpl.headlineSource !== "custom" ||
+    tpl.headline.length > 0 ||
+    tpl.badges.length > 0
+  );
 }
 
 /** Champs de la fiche d'une langue utilisables comme titre de bannière. */
-export type ListingHeadlineTexts = { title?: string | null; shortDescription?: string | null };
+export type ListingHeadlineTexts = {
+  title?: string | null;
+  shortDescription?: string | null;
+};
 
 /** Titre pris dans la fiche selon le modèle ("" si headlineSource = "custom"). */
 export function listingHeadline(
   tpl: FeatureGraphicTemplate,
-  listing?: ListingHeadlineTexts | null
+  listing?: ListingHeadlineTexts | null,
 ): string {
-  if (tpl.headlineSource === "listingTitle") return (listing?.title ?? "").trim();
-  if (tpl.headlineSource === "shortDescription") return (listing?.shortDescription ?? "").trim();
+  if (tpl.headlineSource === "listingTitle")
+    return (listing?.title ?? "").trim();
+  if (tpl.headlineSource === "shortDescription")
+    return (listing?.shortDescription ?? "").trim();
   return "";
 }
 
@@ -217,7 +254,22 @@ export function listingHeadline(
  * fautive: on n'en génère pas, Google Play y montre la bannière par défaut.
  */
 const UNSHAPED_LANGS = new Set([
-  "as", "bn", "gu", "hi", "km", "kn", "lo", "ml", "mr", "my", "ne", "or", "pa", "si", "ta", "te",
+  "as",
+  "bn",
+  "gu",
+  "hi",
+  "km",
+  "kn",
+  "lo",
+  "ml",
+  "mr",
+  "my",
+  "ne",
+  "or",
+  "pa",
+  "si",
+  "ta",
+  "te",
 ]);
 
 export function supportsLocalizedFeatureGraphic(locale: string): boolean {
@@ -230,12 +282,42 @@ export function isRtlLocale(locale: string): boolean {
   return RTL_LANGS.has(locale.toLowerCase().split(/[-_]/)[0]);
 }
 
+const RTL_CHAR = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/;
+const HEBREW = /[\u0590-\u05FF\uFB1D-\uFB4F]/;
+const ARABIC = /[\u0600-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+
+/**
+ * Satori n'applique pas l'algorithme bidi: une phrase arabe/hébraïque est posée
+ * mot à mot de gauche à droite, donc illisible. On découpe en jetons (mots RTL,
+ * et suites de mots LTR gardées ensemble, ex. "MP3" ou "Noise Remover") que
+ * l'appelant pose dans un conteneur `row-reverse` + `wrap`: premier jeton à
+ * droite, retour à la ligne qui repart de la droite.
+ */
+export function rtlTokens(text: string): string[] {
+  const out: string[] = [];
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const prev = out[out.length - 1];
+    if (prev !== undefined && !RTL_CHAR.test(word) && !RTL_CHAR.test(prev)) {
+      out[out.length - 1] = `${prev} ${word}`;
+    } else {
+      out.push(word);
+    }
+  }
+  // L'hébreu n'a pas de mise en forme contextuelle: satori pose ses lettres de
+  // gauche à droite, on les inverse donc dans chaque mot (l'arabe, lui, sort
+  // déjà dans le bon sens à l'intérieur d'un mot).
+  return out.map((t) =>
+    HEBREW.test(t) && !ARABIC.test(t) ? Array.from(t).reverse().join("") : t,
+  );
+}
+
 // Idéogrammes, kana, hangul: un glyphe ≈ 1 em et coupable n'importe où.
 const CJK = /[぀-ヿ㐀-䶿一-鿿가-힯豈-﫿＀-￯]/;
 // Écritures nettement plus larges que Poppins (même liste que render.tsx).
 const WIDE = /[԰-֏஀-௿ఀ-౿ಀ-೿ഀ-ൿ඀-෿Ⴀ-ჿ]/;
 // Marques combinantes: pas de largeur propre (évite de surestimer l'indien/thaï).
-const COMBINING = /[̀-ͯऀ-ःऺ-ॏ॑-ॗॢॣঁ-ঃ়-ৗਁ-ਃ਼-ੑઁ-ઃ઼-્ଁ-ଃ଼-ୗஂா-்ఀ-ఄా-ౖಁ-ಃ಼-ೖഀ-ഃ഻-ൗඁ-ඃ්-ෟัิ-ฺ็-๎ັິ-ຼ່-ໍါ-ှ឴-៓ً-ְٰٟ-ׇ]/;
+const COMBINING =
+  /[̀-ͯऀ-ःऺ-ॏ॑-ॗॢॣঁ-ঃ়-ৗਁ-ਃ਼-ੑઁ-ઃ઼-્ଁ-ଃ଼-ୗஂா-்ఀ-ఄా-ౖಁ-ಃ಼-ೖഀ-ഃ഻-ൗඁ-ඃ්-ෟัิ-ฺ็-๎ັິ-ຼ່-ໍါ-ှ឴-៓ً-ְٰٟ-ׇ]/;
 
 /** Largeur d'un caractère en em (réelle: cf. font-metrics, sinon charAdvance). */
 export type MeasureChar = (ch: string) => number;
@@ -281,7 +363,7 @@ export function lineCount(
   text: string,
   fontSize: number,
   maxWidth: number,
-  measure: MeasureChar = charAdvance
+  measure: MeasureChar = charAdvance,
 ): number | null {
   const tokens = breakTokens(text);
   if (tokens.length === 0) return 0;
@@ -318,11 +400,20 @@ export function fitHeadlineFontSize(opts: {
   min?: number;
   measure?: MeasureChar;
 }): number {
-  const { text, maxWidth, maxHeight, maxLines = 3, max = 66, min = 26, measure } = opts;
+  const {
+    text,
+    maxWidth,
+    maxHeight,
+    maxLines = 3,
+    max = 66,
+    min = 26,
+    measure,
+  } = opts;
   for (let size = max; size > min; size--) {
     const lines = lineCount(text, size, maxWidth, measure);
     if (lines === null) continue;
-    if (lines <= maxLines && lines * size * HEADLINE_LINE_HEIGHT <= maxHeight) return size;
+    if (lines <= maxLines && lines * size * HEADLINE_LINE_HEIGHT <= maxHeight)
+      return size;
   }
   return min;
 }
@@ -336,7 +427,7 @@ export const BADGE_GAP = 10;
 export function fitBadgeFontSize(
   badges: string[],
   maxWidth: number,
-  measure: MeasureChar = charAdvance
+  measure: MeasureChar = charAdvance,
 ): number {
   for (let size = 20; size >= 13; size--) {
     let rows = 1;
@@ -367,9 +458,13 @@ export function textColumnBox(tpl: FeatureGraphicTemplate): {
   width: number;
   height: number;
 } {
-  const width = Math.round(FEATURE_GRAPHIC_WIDTH * tpl.textWidth) - SAFE_MARGIN_X;
+  const width =
+    Math.round(FEATURE_GRAPHIC_WIDTH * tpl.textWidth) - SAFE_MARGIN_X;
   return {
-    left: tpl.textSide === "left" ? SAFE_MARGIN_X : FEATURE_GRAPHIC_WIDTH - SAFE_MARGIN_X - width,
+    left:
+      tpl.textSide === "left"
+        ? SAFE_MARGIN_X
+        : FEATURE_GRAPHIC_WIDTH - SAFE_MARGIN_X - width,
     top: TEXT_PAD_Y,
     width,
     height: FEATURE_GRAPHIC_HEIGHT - 2 * TEXT_PAD_Y,
@@ -397,20 +492,33 @@ export const LOW_CONTRAST_WARN_SHARE = 0.15;
 
 export function hexToRgb(hex: string): [number, number, number] {
   const m = HEX.test(hex) ? hex : "#ffffff";
-  return [parseInt(m.slice(1, 3), 16), parseInt(m.slice(3, 5), 16), parseInt(m.slice(5, 7), 16)];
+  return [
+    parseInt(m.slice(1, 3), 16),
+    parseInt(m.slice(3, 5), 16),
+    parseInt(m.slice(5, 7), 16),
+  ];
 }
 
 /**
  * Part (0–1) des pixels RGB de la colonne de texte dont le contraste avec la
  * couleur du texte est sous MIN_TEXT_CONTRAST.
  */
-export function lowContrastShare(pixels: Uint8Array, channels: number, textColor: string): number {
+export function lowContrastShare(
+  pixels: Uint8Array,
+  channels: number,
+  textColor: string,
+): number {
   const text = relativeLuminance(...hexToRgb(textColor));
   let low = 0;
   let total = 0;
   for (let i = 0; i + 2 < pixels.length; i += channels) {
     total++;
-    if (contrastRatio(text, relativeLuminance(pixels[i], pixels[i + 1], pixels[i + 2])) < MIN_TEXT_CONTRAST) {
+    if (
+      contrastRatio(
+        text,
+        relativeLuminance(pixels[i], pixels[i + 1], pixels[i + 2]),
+      ) < MIN_TEXT_CONTRAST
+    ) {
       low++;
     }
   }
