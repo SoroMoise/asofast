@@ -192,10 +192,12 @@ export async function renderFrame(
   // Polices par script pour la caption: on fournit explicitement a Satori la
   // bonne police (arabe, indiennes, CJK, cyrillique, etc.) au lieu de le laisser
   // en chercher une en reseau au moment du rendu (lent, timeouts en prod). Une
-  // caption latine ou devanagari renvoie [] et reste sur Poppins.
+  // caption latine ou devanagari renvoie [] et reste sur Poppins. Graisse de la
+  // caption: les ecritures composees par HarfBuzz ont leur vrai gras.
   const { fonts: scriptFonts, missing } = await loadScriptFonts(
     displayCaption,
     locale,
+    style.fontWeight,
   );
   // Une police de script manquante ne degrade pas: satori dessinerait des carres
   // vides et le PNG partirait quand meme sur le store. On echoue la langue, fort
@@ -356,8 +358,9 @@ export async function renderFrame(
         weight: 700 as const,
         style: "normal" as const,
       },
-      // Polices par script (un seul poids Regular chacune, suffisant pour les
-      // scripts non latins; le bold demande par la caption degrade proprement).
+      // Polices par script. Un seul poids enregistre: les ecritures que satori
+      // dessine n'ont que le Regular; celles en gras (cf. WEIGHTED_SCRIPTS)
+      // sont composees par HarfBuzz, pas par satori.
       ...scriptFonts.map((f) => ({
         name: f.name,
         data: f.data,

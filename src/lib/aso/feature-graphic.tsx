@@ -69,13 +69,18 @@ export async function renderFeatureGraphic(opts: {
 }): Promise<Buffer> {
   const { template, texts, artDataUrl, locale } = opts;
   const allText = [texts.headline, ...texts.badges].join(" ");
-  const [fonts, script] = await Promise.all([
+  // Polices de script dans les graisses du rendu: Bold pour le titre, SemiBold
+  // pour les badges (identiques au Regular pour les écritures dessinées par
+  // satori, cf. WEIGHTED_SCRIPTS dans fonts.ts).
+  const [fonts, script, badgeScript] = await Promise.all([
     loadFonts(),
-    loadScriptFonts(allText, locale),
+    loadScriptFonts(allText, locale, "bold"),
+    loadScriptFonts(allText, locale, "semibold"),
   ]);
-  if (script.missing.length > 0) {
+  const missing = [...new Set([...script.missing, ...badgeScript.missing])];
+  if (missing.length > 0) {
     throw new Error(
-      `Script font unavailable (${script.missing.join(", ")}): the banner text would render as empty boxes.`,
+      `Script font unavailable (${missing.join(", ")}): the banner text would render as empty boxes.`,
     );
   }
 
@@ -84,10 +89,11 @@ export async function renderFeatureGraphic(opts: {
   // shaping.ts). Même pile de polices que satori, par graisse utilisée.
   const shaped = !rtl && needsShaping(allText);
   const scriptStack = script.fonts.map((f) => f.data);
+  const badgeScriptStack = badgeScript.fonts.map((f) => f.data);
   const [headlineShaper, badgeShaper] = shaped
     ? await Promise.all([
         createShaper([fonts.bold, ...scriptStack]),
-        createShaper([fonts.semibold, ...scriptStack]),
+        createShaper([fonts.semibold, ...badgeScriptStack]),
       ])
     : [null, null];
   const column = textColumnBox(template);
@@ -99,7 +105,7 @@ export async function renderFeatureGraphic(opts: {
     charAdvance,
   );
   const measureBadge = measurerFor(
-    [fonts.semibold, ...scriptStack],
+    [fonts.semibold, ...badgeScriptStack],
     charAdvance,
   );
   const badgeSize =

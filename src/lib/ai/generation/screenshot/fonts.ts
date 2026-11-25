@@ -265,7 +265,7 @@ const SCRIPT_FONT_URLS = {
   kr: "https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@Sans2.004/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf",
 } as const;
 
-type FontKey = keyof typeof SCRIPT_FONT_URLS;
+export type FontKey = keyof typeof SCRIPT_FONT_URLS;
 
 // Nom de famille expose a Satori pour chaque police. Le nom sert de cle dans la
 // pile fontFamily cote render: cette table reste la seule source du couple
@@ -296,6 +296,39 @@ const FONT_META: Record<FontKey, { name: string; url: string }> = {
   jp: { name: "NotoSansJP", url: SCRIPT_FONT_URLS.jp },
   kr: { name: "NotoSansKR", url: SCRIPT_FONT_URLS.kr },
 };
+
+export type FontWeight = keyof LoadedFonts;
+
+/**
+ * Ecritures composees par HarfBuzz (cf. shaping.ts) dont les Noto existent en
+ * SemiBold et Bold. satori ne dessine jamais ces ecritures (il ne sait pas les
+ * composer): rien n'y simulait le gras, une caption "bold" sortait en Regular
+ * a cote du latin en Poppins Bold. On charge donc la vraie graisse.
+ * Les autres ecritures restent en Regular: satori les dessine avec une seule
+ * graisse enregistree.
+ */
+const WEIGHTED_SCRIPTS = new Set<FontKey>([
+  "bengali", "gujarati", "gurmukhi", "oriya", "tamil", "telugu",
+  "kannada", "malayalam", "sinhala", "lao", "khmer", "myanmar",
+]);
+const WEIGHT_FILE: Record<FontWeight, string> = {
+  regular: "Regular",
+  semibold: "SemiBold",
+  bold: "Bold",
+};
+// NotoSansOriya n'est pas publiee en SemiBold (404): le Bold est la plus proche.
+const WEIGHT_OVERRIDES: Partial<Record<FontKey, Partial<Record<FontWeight, FontWeight>>>> = {
+  oriya: { semibold: "bold" },
+};
+
+/** URL de la police d'une ecriture dans la graisse demandee (Regular si
+ *  l'ecriture n'a qu'une graisse, cf. WEIGHTED_SCRIPTS). */
+export function scriptFontUrl(key: FontKey, weight: FontWeight): string {
+  const url = FONT_META[key].url;
+  if (!WEIGHTED_SCRIPTS.has(key)) return url;
+  const w = WEIGHT_OVERRIDES[key]?.[weight] ?? weight;
+  return url.replace(/-Regular\.ttf$/, `-${WEIGHT_FILE[w]}.ttf`);
+}
 
 /** Une plage Unicode par ecriture, exprimee avec les glyphes de borne. Les
  *  bornes sont verifiees par codepoint, pas a l'oeil: un glyphe de borne se
@@ -449,10 +482,13 @@ function scriptFontKeysForLocale(locale: string): FontKey[] {
  */
 export async function warmFonts(locales: string[]): Promise<void> {
   const keys = new Set(locales.flatMap(scriptFontKeysForLocale));
-  const urls = [...keys].map((key) => FONT_META[key].url);
+  // Toutes les graisses: les captions peuvent demander n'importe laquelle, la
+  // banniere prend Bold (titre) et SemiBold (badges).
+  const weights: FontWeight[] = ["regular", "semibold", "bold"];
+  const urls = new Set([...keys].flatMap((key) => weights.map((w) => scriptFontUrl(key, w))));
   const tasks: (() => Promise<unknown>)[] = [
     () => loadFonts(),
-    ...urls.map((url) => () => fetchFont(url)),
+    ...[...urls].map((url) => () => fetchFont(url)),
   ];
   const t = performance.now();
   const settled = await mapWithConcurrency(tasks, FONT_WARM_CONCURRENCY, (task) =>
@@ -474,23 +510,42 @@ export type ScriptFont = { name: string; data: ArrayBuffer };
 export type ScriptFonts = { fonts: ScriptFont[]; missing: string[] };
 
 /**
- * Renvoie les polices a fournir a Satori pour cette caption (une entree par
- * script non latin detecte). Un seul poids Regular par police: suffisant pour
- * les scripts non latins, le "bold" degrade proprement.
+ * Renvoie les polices de script a fournir pour ce texte (une entree par script
+ * non latin detecte), dans la graisse demandee quand l'ecriture l'a (cf.
+ * WEIGHTED_SCRIPTS), Regular sinon.
+ * Une graisse injoignable retombe sur le Regular plutot que de perdre la
+ * langue: un texte un peu moins gras vaut mieux qu'une langue en echec.
  * Ne throw JAMAIS: un echec reseau se lit dans `missing`, ce qui laisse
  * l'appelant decider (echouer la langue plutot que livrer un rendu vide).
  */
-export async function loadScriptFonts(text: string, locale?: string): Promise<ScriptFonts> {
+export async function loadScriptFonts(
+  text: string,
+  locale?: string,
+  weight: FontWeight = "regular"
+): Promise<ScriptFonts> {
   const keys = detectFontKeys(text, locale);
   // Une police absente du cache ici part en telechargement pendant que les
   // locales voisines rasterisent: c'est exactement ce que `warmFonts` doit
   // empecher. Le signal designe l'entree manquante de LOCALE_SCRIPT.
   for (const key of keys) {
-    if (!cache.has(FONT_META[key].url)) {
-      console.warn(`[fonts] cold fetch during render: ${FONT_META[key].name} (locale=${locale})`);
+    if (!cache.has(scriptFontUrl(key, weight))) {
+      console.warn(
+        `[fonts] cold fetch during render: ${FONT_META[key].name} ${weight} (locale=${locale})`
+      );
     }
   }
-  const settled = await Promise.allSettled(keys.map((key) => fetchFont(FONT_META[key].url)));
+  const fetchWeighted = async (key: FontKey): Promise<ArrayBuffer> => {
+    const url = scriptFontUrl(key, weight);
+    const regular = FONT_META[key].url;
+    if (url === regular) return fetchFont(url);
+    try {
+      return await fetchFont(url);
+    } catch {
+      console.warn(`[fonts] ${FONT_META[key].name} ${weight} unavailable, using Regular`);
+      return fetchFont(regular);
+    }
+  };
+  const settled = await Promise.allSettled(keys.map(fetchWeighted));
 
   const fonts: ScriptFont[] = [];
   const missing: string[] = [];
