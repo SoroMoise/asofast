@@ -1,10 +1,50 @@
 import { renderAsync } from "@resvg/resvg-js";
 import satori from "satori";
+import type { ReactElement } from "react";
 import type { ScreenshotStyle } from "@/lib/ai/types";
 import { isRtlLocale, rtlTokens } from "@/lib/aso/feature-graphic-layout";
 import { loadScriptFonts, type LoadedFonts } from "./fonts";
+import {
+  createShaper,
+  needsShaping,
+  type ShapeStyle,
+  type Shaper,
+} from "./shaping";
 
 const WEIGHT_MAP = { regular: 400, semibold: 600, bold: 700 } as const;
+
+/**
+ * Texte composé par HarfBuzz (écritures indiennes, cf. shaping.ts): un mot = une
+ * <img>, posées dans une rangée `wrap`. `columnGap` (et non une marge par mot)
+ * pour qu'une ligne vaille exactement mots + espaces intermédiaires, comme dans
+ * la simulation de retour à la ligne (lineCount, captionFontSize): sinon la
+ * dernière espace d'une ligne la ferait passer à la ligne suivante trop tôt.
+ */
+export function shapedWords(
+  shaper: Shaper,
+  text: string,
+  style: ShapeStyle,
+): ReactElement[] {
+  return text
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word, i) => {
+      const img = shaper.render(word, style);
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={i}
+          src={img.src}
+          alt=""
+          width={img.width}
+          height={img.height}
+          style={{
+            margin: `${-img.marginY}px ${-img.marginX}px`,
+          }}
+        />
+      );
+    });
+}
 
 /**
  * Retire les emoji d'une caption.
@@ -67,6 +107,7 @@ function captionFontSize(
   width: number,
   caption: string,
   zoneHeight: number,
+  shaper: Shaper | null,
 ): number {
   const advance = WIDE_SCRIPT.test(caption)
     ? WIDE_SCRIPT_ADVANCE
@@ -78,15 +119,23 @@ function captionFontSize(
   if (words.length === 0) return Math.round(minFont);
   const maxFont = width * 0.12; // plafond absolu (captions tres courtes)
 
+  // Largeurs en em. Texte compose par HarfBuzz: largeurs exactes, et c'est
+  // aussi ce que satori posera (une image par mot, espacees de spaceAdvance).
+  // Sinon: estimation prudente, nb de chars * advance.
+  const wordEm = words.map((word) =>
+    shaper ? shaper.measure(word) : word.length * advance,
+  );
+  const spaceEm = shaper ? shaper.spaceAdvance : advance;
+
   // Retour a la ligne glouton a une taille donnee: renvoie le nombre de lignes,
   // ou null si un mot seul est deja plus large que la largeur dispo (dans ce cas
-  // il faut descendre encore). Largeur d'un mot ~ nb de chars * advance * police.
+  // il faut descendre encore).
   const lineCount = (font: number): number | null => {
-    const spaceWidth = advance * font;
+    const spaceWidth = spaceEm * font;
     let lines = 1;
     let lineWidth = 0;
-    for (const word of words) {
-      const wordWidth = word.length * advance * font;
+    for (const em of wordEm) {
+      const wordWidth = em * font;
       if (wordWidth > avail) return null; // mot seul trop large a cette taille
       if (lineWidth === 0) lineWidth = wordWidth;
       else if (lineWidth + spaceWidth + wordWidth <= avail)
@@ -143,10 +192,12 @@ export async function renderFrame(
   // Polices par script pour la caption: on fournit explicitement a Satori la
   // bonne police (arabe, indiennes, CJK, cyrillique, etc.) au lieu de le laisser
   // en chercher une en reseau au moment du rendu (lent, timeouts en prod). Une
-  // caption latine ou devanagari renvoie [] et reste sur Poppins.
+  // caption latine ou devanagari renvoie [] et reste sur Poppins. Graisse de la
+  // caption: les ecritures composees par HarfBuzz ont leur vrai gras.
   const { fonts: scriptFonts, missing } = await loadScriptFonts(
     displayCaption,
     locale,
+    style.fontWeight,
   );
   // Une police de script manquante ne degrade pas: satori dessinerait des carres
   // vides et le PNG partirait quand meme sur le store. On echoue la langue, fort
@@ -158,12 +209,22 @@ export async function renderFrame(
     );
   }
   const fontWeight = WEIGHT_MAP[style.fontWeight];
+  const rtl = locale ? isRtlLocale(locale) : false;
+  // satori ne compose pas les ecritures indiennes (cf. shaping.ts): HarfBuzz
+  // les compose, avec la meme pile de polices que satori (Poppins de la graisse
+  // demandee, puis les polices de script).
+  const shaper =
+    !rtl && needsShaping(displayCaption)
+      ? await createShaper([
+          fonts[style.fontWeight],
+          ...scriptFonts.map((f) => f.data),
+        ])
+      : null;
   // Bande réservée à la caption (assez pour 2 lignes en grande taille); tout le
   // reste va au screenshot, pleine largeur, ratio préservé (objectFit contain).
   const captionZoneH = Math.round(height * 0.2);
   const imageZoneH = height - captionZoneH;
-  const fontSize = captionFontSize(width, displayCaption, captionZoneH);
-  const rtl = locale ? isRtlLocale(locale) : false;
+  const fontSize = captionFontSize(width, displayCaption, captionZoneH, shaper);
   const wordGap = Math.round(fontSize * 0.13);
 
   const background = style.backgroundGradientTo
@@ -198,18 +259,31 @@ export async function renderFrame(
                 flexWrap: "wrap" as const,
               }
             : {}),
+          ...(shaper
+            ? {
+                flexWrap: "wrap" as const,
+                // cf. shapedWords: columnGap, pas de marge par mot.
+                columnGap: shaper.spaceAdvance * fontSize,
+              }
+            : {}),
         }}
       >
-        {rtl
-          ? rtlTokens(displayCaption).map((token, i) => (
-              <span
-                key={i}
-                style={{ marginLeft: wordGap, marginRight: wordGap }}
-              >
-                {token}
-              </span>
-            ))
-          : displayCaption}
+        {shaper
+          ? shapedWords(shaper, displayCaption, {
+              fontSize,
+              lineHeight: CAPTION_LINE_HEIGHT,
+              color: style.textColor,
+            })
+          : rtl
+            ? rtlTokens(displayCaption).map((token, i) => (
+                <span
+                  key={i}
+                  style={{ marginLeft: wordGap, marginRight: wordGap }}
+                >
+                  {token}
+                </span>
+              ))
+            : displayCaption}
       </div>
     </div>
   );
@@ -284,8 +358,9 @@ export async function renderFrame(
         weight: 700 as const,
         style: "normal" as const,
       },
-      // Polices par script (un seul poids Regular chacune, suffisant pour les
-      // scripts non latins; le bold demande par la caption degrade proprement).
+      // Polices par script. Un seul poids enregistre: les ecritures que satori
+      // dessine n'ont que le Regular; celles en gras (cf. WEIGHTED_SCRIPTS)
+      // sont composees par HarfBuzz, pas par satori.
       ...scriptFonts.map((f) => ({
         name: f.name,
         data: f.data,

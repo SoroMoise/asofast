@@ -31,8 +31,6 @@ type LocaleState = {
   manual: boolean;
   /** Modèle, illustration ou titre de la fiche changés depuis le rendu. */
   stale: boolean;
-  /** false: écriture mal composée par le moteur, la langue garde la bannière par défaut. */
-  supported: boolean;
 };
 type ApiState = {
   configured: boolean;
@@ -319,12 +317,10 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
     return <div className="h-24 animate-pulse rounded-lg bg-muted" aria-hidden="true" />;
   }
 
-  const supported = state.locales.filter((l) => l.supported);
-  const unsupported = state.locales.filter((l) => !l.supported);
-  const allLocales = supported.map((l) => l.locale);
-  const missing = supported.filter((l) => !l.url).map((l) => l.locale);
-  const stale = supported.filter((l) => l.url && l.stale).map((l) => l.locale);
-  const manualCount = supported.filter((l) => l.url && l.manual).length;
+  const allLocales = state.locales.map((l) => l.locale);
+  const missing = state.locales.filter((l) => !l.url).map((l) => l.locale);
+  const stale = state.locales.filter((l) => l.url && l.stale).map((l) => l.locale);
+  const manualCount = state.locales.filter((l) => l.url && l.manual).length;
   const shownDraft = draft && draft.locale === preview ? draft : null;
   // Contraste de l'aperçu non enregistré s'il est affiché, sinon du modèle enregistré.
   const lowContrastShare = shownDraft
@@ -521,13 +517,6 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
           text to the other side, or keep that part of the illustration plain.
         </p>
       ) : null}
-      {unsupported.length > 0 ? (
-        <p className="max-w-prose text-xs text-muted-foreground">
-          {unsupported.map((l) => LOCALE_LABELS.get(l.locale) ?? l.locale).join(", ")}: no
-          localized banner, the banner renderer does not shape this script correctly yet. Google
-          Play shows the default banner for these languages.
-        </p>
-      ) : null}
       {manualCount > 0 ? (
         <p className="text-xs text-muted-foreground">
           {manualCount} language(s) have text edited by hand: regenerating keeps it (use &quot;Back to
@@ -551,15 +540,9 @@ export function LocalizedFeatureGraphic({ projectId }: { projectId: string }) {
               onChange={(e) => setPreview(e.target.value)}
             >
               {state.locales.map((l) => (
-                <option key={l.locale} value={l.locale} disabled={!l.supported}>
+                <option key={l.locale} value={l.locale}>
                   {LOCALE_LABELS.get(l.locale) ?? l.locale}
-                  {!l.supported
-                    ? " (default banner)"
-                    : !l.url
-                      ? " (not generated)"
-                      : l.stale
-                        ? " (outdated)"
-                        : ""}
+                  {!l.url ? " (not generated)" : l.stale ? " (outdated)" : ""}
                 </option>
               ))}
             </select>

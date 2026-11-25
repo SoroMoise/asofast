@@ -4,7 +4,7 @@ import * as React from "react";
 
 type BannerState = {
   defaultBanner: boolean;
-  locales: { locale: string; url: string | null; stale: boolean; supported: boolean }[];
+  locales: { locale: string; url: string | null; stale: boolean }[];
 };
 
 /**
@@ -47,7 +47,7 @@ export function FeatureGraphicPublishSummary({
   const byLocale = new Map(state.locales.map((l) => [l.locale, l]));
   const own = locales.filter((l) => {
     const s = byLocale.get(l);
-    return Boolean(s?.supported && s.url);
+    return Boolean(s?.url);
   });
   const inherited = locales.filter((l) => !own.includes(l));
   const outdated = own.filter((l) => byLocale.get(l)?.stale);

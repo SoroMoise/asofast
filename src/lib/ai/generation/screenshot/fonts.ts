@@ -193,17 +193,17 @@ export async function loadFonts(): Promise<LoadedFonts> {
  * @vercel/og avale l'erreur: la caption part alors en carres vides sans qu'aucune
  * erreur ne remonte. On fournit donc explicitement la bonne police.
  *
- * LIMITE DU MOTEUR, a connaitre avant de toucher a cette table. next/og n'embarque
+ * LIMITE DU MOTEUR, a connaitre avant de toucher a cette table. satori n'embarque
  * PAS fontkit mais opentype.js, qui n'a ni shaper indien ni Universal Shaping
- * Engine. Il mappe codepoint par codepoint. Les ecritures brahmiques (devanagari,
- * bengali, gujarati, gurmukhi, tamoul, telougou, kannada, malayalam, singhalais,
- * khmer, lao, birman) ne sont donc PAS composees correctement: une voyelle
- * pre-base reste apres sa consonne (दिन rendu दनि) et les matras isolees sortent
- * avec leur cercle pointille. Aucune police ne repare ca. Les polices ci-dessous
- * suppriment le repli reseau et les carres vides, mais le texte de ces ecritures
- * reste mal compose tant qu'on ne pre-shape pas (harfbuzz) en amont.
- * Rendent correctement: latin, cyrillique, grec, hebreu, arabe/persan/ourdou
- * (opentype.js a un module bidi + arabe), thai, armenien, georgien, ethiopien, CJK.
+ * Engine. Il mappe codepoint par codepoint: les ecritures brahmiques (devanagari,
+ * bengali, gujarati, gurmukhi, odia, tamoul, telougou, kannada, malayalam,
+ * singhalais) et lao, khmer, birman sortiraient mal composees (दिन rendu दनि).
+ * Ces ecritures ne passent donc PAS par le texte satori: shaping.ts les compose
+ * avec HarfBuzz et les pose en images. Les polices ci-dessous alimentent les deux
+ * chemins (texte satori et HarfBuzz).
+ * Le texte satori rend correctement: latin, cyrillique, grec, hebreu, arabe/
+ * persan/ourdou (opentype.js a un module bidi + arabe), thai, armenien, georgien,
+ * ethiopien, CJK.
  *
  * Deux pieges verifies empiriquement (rendu reel via next/og, reseau coupe,
  * plusieurs captions par ecriture):
@@ -213,8 +213,7 @@ export async function loadFonts(): Promise<LoadedFonts> {
  *     (Sans, Naskh, Kufi), Amiri, Harmattan, Lateef et Scheherazade le portent et
  *     font echouer le rendu. Vazirmatn ne l'a pas, couvre l'arabe, le persan et
  *     l'ourdou, et rend les trois sans repli reseau. Le meme lookup dans une
- *     police indienne est INOFFENSIF (jamais applique): on garde donc les Noto,
- *     implementation de reference, qui seront correctes le jour du pre-shaping.
+ *     police indienne est INOFFENSIF: ces polices sont composees par HarfBuzz.
  *
  *  2. opentype.js throw sur les polices VARIABLES (`Famille[wght].ttf`), avec un
  *     `Cannot read properties of undefined`. Ne pointer que vers des instances
@@ -236,13 +235,12 @@ const SCRIPT_FONT_URLS = {
   thai: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansThai/hinted/ttf/NotoSansThai-Regular.ttf",
 
   // Brahmiques. Poppins couvre le devanagari (glyphes presents), les autres non.
-  // ATTENTION: fournir la police supprime les carres vides et le repli reseau,
-  // mais opentype.js ne les compose pas (cf. LIMITE DU MOTEUR ci-dessus). On
-  // choisit donc les Noto, seule famille qui couvre toutes ces ecritures avec un
-  // GSUB complet: elles seront correctes des qu'un vrai shaper les alimentera.
+  // Composees par HarfBuzz (cf. LIMITE DU MOTEUR ci-dessus): les Noto sont la
+  // seule famille qui couvre toutes ces ecritures avec un GSUB/GPOS complet.
   bengali: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansBengali/hinted/ttf/NotoSansBengali-Regular.ttf",
   gujarati: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansGujarati/hinted/ttf/NotoSansGujarati-Regular.ttf",
   gurmukhi: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansGurmukhi/hinted/ttf/NotoSansGurmukhi-Regular.ttf",
+  oriya: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansOriya/hinted/ttf/NotoSansOriya-Regular.ttf",
   tamil: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansTamil/hinted/ttf/NotoSansTamil-Regular.ttf",
   telugu: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansTelugu/hinted/ttf/NotoSansTelugu-Regular.ttf",
   kannada: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansKannada/hinted/ttf/NotoSansKannada-Regular.ttf",
@@ -267,7 +265,7 @@ const SCRIPT_FONT_URLS = {
   kr: "https://cdn.jsdelivr.net/gh/googlefonts/noto-cjk@Sans2.004/Sans/SubsetOTF/KR/NotoSansKR-Regular.otf",
 } as const;
 
-type FontKey = keyof typeof SCRIPT_FONT_URLS;
+export type FontKey = keyof typeof SCRIPT_FONT_URLS;
 
 // Nom de famille expose a Satori pour chaque police. Le nom sert de cle dans la
 // pile fontFamily cote render: cette table reste la seule source du couple
@@ -280,6 +278,7 @@ const FONT_META: Record<FontKey, { name: string; url: string }> = {
   bengali: { name: "NotoSansBengali", url: SCRIPT_FONT_URLS.bengali },
   gujarati: { name: "NotoSansGujarati", url: SCRIPT_FONT_URLS.gujarati },
   gurmukhi: { name: "NotoSansGurmukhi", url: SCRIPT_FONT_URLS.gurmukhi },
+  oriya: { name: "NotoSansOriya", url: SCRIPT_FONT_URLS.oriya },
   tamil: { name: "NotoSansTamil", url: SCRIPT_FONT_URLS.tamil },
   telugu: { name: "NotoSansTelugu", url: SCRIPT_FONT_URLS.telugu },
   kannada: { name: "NotoSansKannada", url: SCRIPT_FONT_URLS.kannada },
@@ -298,6 +297,39 @@ const FONT_META: Record<FontKey, { name: string; url: string }> = {
   kr: { name: "NotoSansKR", url: SCRIPT_FONT_URLS.kr },
 };
 
+export type FontWeight = keyof LoadedFonts;
+
+/**
+ * Ecritures composees par HarfBuzz (cf. shaping.ts) dont les Noto existent en
+ * SemiBold et Bold. satori ne dessine jamais ces ecritures (il ne sait pas les
+ * composer): rien n'y simulait le gras, une caption "bold" sortait en Regular
+ * a cote du latin en Poppins Bold. On charge donc la vraie graisse.
+ * Les autres ecritures restent en Regular: satori les dessine avec une seule
+ * graisse enregistree.
+ */
+const WEIGHTED_SCRIPTS = new Set<FontKey>([
+  "bengali", "gujarati", "gurmukhi", "oriya", "tamil", "telugu",
+  "kannada", "malayalam", "sinhala", "lao", "khmer", "myanmar",
+]);
+const WEIGHT_FILE: Record<FontWeight, string> = {
+  regular: "Regular",
+  semibold: "SemiBold",
+  bold: "Bold",
+};
+// NotoSansOriya n'est pas publiee en SemiBold (404): le Bold est la plus proche.
+const WEIGHT_OVERRIDES: Partial<Record<FontKey, Partial<Record<FontWeight, FontWeight>>>> = {
+  oriya: { semibold: "bold" },
+};
+
+/** URL de la police d'une ecriture dans la graisse demandee (Regular si
+ *  l'ecriture n'a qu'une graisse, cf. WEIGHTED_SCRIPTS). */
+export function scriptFontUrl(key: FontKey, weight: FontWeight): string {
+  const url = FONT_META[key].url;
+  if (!WEIGHTED_SCRIPTS.has(key)) return url;
+  const w = WEIGHT_OVERRIDES[key]?.[weight] ?? weight;
+  return url.replace(/-Regular\.ttf$/, `-${WEIGHT_FILE[w]}.ttf`);
+}
+
 /** Une plage Unicode par ecriture, exprimee avec les glyphes de borne. Les
  *  bornes sont verifiees par codepoint, pas a l'oeil: un glyphe de borne se
  *  copie mal (les lignes RTL se reordonnent a l'affichage). */
@@ -311,6 +343,7 @@ const SCRIPT_RANGES: { key: FontKey; re: RegExp }[] = [
   { key: "bengali", re: /[ঀ-৿]/ },
   { key: "gurmukhi", re: /[਀-੿]/ },
   { key: "gujarati", re: /[઀-૿]/ },
+  { key: "oriya", re: /[\u0B00-\u0B7F]/ },
   { key: "tamil", re: /[஀-௿]/ },
   { key: "telugu", re: /[ఀ-౿]/ },
   { key: "kannada", re: /[ಀ-೿]/ },
@@ -404,7 +437,8 @@ const LOCALE_SCRIPT: Record<string, FontKey> = {
   he: "hebrew", iw: "hebrew", // `iw` est l'ancien code ISO de l'hebreu, encore emis.
   th: "thai",
 
-  bn: "bengali", gu: "gujarati", pa: "gurmukhi", ta: "tamil", te: "telugu",
+  // L'assamais s'ecrit en alphabet bengali.
+  bn: "bengali", as: "bengali", gu: "gujarati", pa: "gurmukhi", or: "oriya", ta: "tamil", te: "telugu",
   kn: "kannada", ml: "malayalam", si: "sinhala", lo: "lao", km: "khmer", my: "myanmar",
 
   hy: "armenian", ka: "georgian", am: "ethiopic", ti: "ethiopic",
@@ -448,10 +482,13 @@ function scriptFontKeysForLocale(locale: string): FontKey[] {
  */
 export async function warmFonts(locales: string[]): Promise<void> {
   const keys = new Set(locales.flatMap(scriptFontKeysForLocale));
-  const urls = [...keys].map((key) => FONT_META[key].url);
+  // Toutes les graisses: les captions peuvent demander n'importe laquelle, la
+  // banniere prend Bold (titre) et SemiBold (badges).
+  const weights: FontWeight[] = ["regular", "semibold", "bold"];
+  const urls = new Set([...keys].flatMap((key) => weights.map((w) => scriptFontUrl(key, w))));
   const tasks: (() => Promise<unknown>)[] = [
     () => loadFonts(),
-    ...urls.map((url) => () => fetchFont(url)),
+    ...[...urls].map((url) => () => fetchFont(url)),
   ];
   const t = performance.now();
   const settled = await mapWithConcurrency(tasks, FONT_WARM_CONCURRENCY, (task) =>
@@ -473,23 +510,42 @@ export type ScriptFont = { name: string; data: ArrayBuffer };
 export type ScriptFonts = { fonts: ScriptFont[]; missing: string[] };
 
 /**
- * Renvoie les polices a fournir a Satori pour cette caption (une entree par
- * script non latin detecte). Un seul poids Regular par police: suffisant pour
- * les scripts non latins, le "bold" degrade proprement.
+ * Renvoie les polices de script a fournir pour ce texte (une entree par script
+ * non latin detecte), dans la graisse demandee quand l'ecriture l'a (cf.
+ * WEIGHTED_SCRIPTS), Regular sinon.
+ * Une graisse injoignable retombe sur le Regular plutot que de perdre la
+ * langue: un texte un peu moins gras vaut mieux qu'une langue en echec.
  * Ne throw JAMAIS: un echec reseau se lit dans `missing`, ce qui laisse
  * l'appelant decider (echouer la langue plutot que livrer un rendu vide).
  */
-export async function loadScriptFonts(text: string, locale?: string): Promise<ScriptFonts> {
+export async function loadScriptFonts(
+  text: string,
+  locale?: string,
+  weight: FontWeight = "regular"
+): Promise<ScriptFonts> {
   const keys = detectFontKeys(text, locale);
   // Une police absente du cache ici part en telechargement pendant que les
   // locales voisines rasterisent: c'est exactement ce que `warmFonts` doit
   // empecher. Le signal designe l'entree manquante de LOCALE_SCRIPT.
   for (const key of keys) {
-    if (!cache.has(FONT_META[key].url)) {
-      console.warn(`[fonts] cold fetch during render: ${FONT_META[key].name} (locale=${locale})`);
+    if (!cache.has(scriptFontUrl(key, weight))) {
+      console.warn(
+        `[fonts] cold fetch during render: ${FONT_META[key].name} ${weight} (locale=${locale})`
+      );
     }
   }
-  const settled = await Promise.allSettled(keys.map((key) => fetchFont(FONT_META[key].url)));
+  const fetchWeighted = async (key: FontKey): Promise<ArrayBuffer> => {
+    const url = scriptFontUrl(key, weight);
+    const regular = FONT_META[key].url;
+    if (url === regular) return fetchFont(url);
+    try {
+      return await fetchFont(url);
+    } catch {
+      console.warn(`[fonts] ${FONT_META[key].name} ${weight} unavailable, using Regular`);
+      return fetchFont(regular);
+    }
+  };
+  const settled = await Promise.allSettled(keys.map(fetchWeighted));
 
   const fonts: ScriptFont[] = [];
   const missing: string[] = [];

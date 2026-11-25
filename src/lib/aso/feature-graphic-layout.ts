@@ -248,34 +248,6 @@ export function listingHeadline(
   return "";
 }
 
-/**
- * Langues dont l'écriture n'est pas composée correctement par le moteur de rendu
- * (opentype.js: pas de shaper indien ni USE, cf. fonts.ts). Une bannière y serait
- * fautive: on n'en génère pas, Google Play y montre la bannière par défaut.
- */
-const UNSHAPED_LANGS = new Set([
-  "as",
-  "bn",
-  "gu",
-  "hi",
-  "km",
-  "kn",
-  "lo",
-  "ml",
-  "mr",
-  "my",
-  "ne",
-  "or",
-  "pa",
-  "si",
-  "ta",
-  "te",
-]);
-
-export function supportsLocalizedFeatureGraphic(locale: string): boolean {
-  return !UNSHAPED_LANGS.has(locale.toLowerCase().split(/[-_]/)[0]);
-}
-
 const RTL_LANGS = new Set(["ar", "he", "iw", "fa", "ur"]);
 
 export function isRtlLocale(locale: string): boolean {
@@ -321,6 +293,10 @@ const COMBINING =
 
 /** Largeur d'un caractère en em (réelle: cf. font-metrics, sinon charAdvance). */
 export type MeasureChar = (ch: string) => number;
+/** Largeur d'un mot entier en em, mise en forme comprise (cf. shaping.ts). Quand
+ *  elle est fournie, elle remplace la somme des caractères: en écriture indienne
+ *  un conjoint ou une voyelle réordonnée ne vaut pas la somme de ses lettres. */
+export type MeasureToken = (token: string) => number;
 
 /** Largeur estimée d'un caractère, en em, pour Poppins bold + polices de script. */
 export function charAdvance(ch: string): number {
@@ -352,7 +328,12 @@ export function breakTokens(text: string): string[] {
   return tokens;
 }
 
-function tokenWidth(token: string, measure: MeasureChar): number {
+function tokenWidth(
+  token: string,
+  measure: MeasureChar,
+  measureToken?: MeasureToken,
+): number {
+  if (measureToken) return measureToken(token);
   let w = 0;
   for (const ch of token) w += measure(ch);
   return w;
@@ -364,6 +345,7 @@ export function lineCount(
   fontSize: number,
   maxWidth: number,
   measure: MeasureChar = charAdvance,
+  measureToken?: MeasureToken,
 ): number | null {
   const tokens = breakTokens(text);
   if (tokens.length === 0) return 0;
@@ -371,7 +353,7 @@ export function lineCount(
   let lines = 1;
   let current = 0;
   for (const token of tokens) {
-    const w = tokenWidth(token, measure) * fontSize;
+    const w = tokenWidth(token, measure, measureToken) * fontSize;
     if (w > maxWidth) return null;
     const isCjk = CJK.test(token);
     const gap = current === 0 || isCjk ? 0 : space;
@@ -399,6 +381,7 @@ export function fitHeadlineFontSize(opts: {
   max?: number;
   min?: number;
   measure?: MeasureChar;
+  measureToken?: MeasureToken;
 }): number {
   const {
     text,
@@ -408,9 +391,10 @@ export function fitHeadlineFontSize(opts: {
     max = 66,
     min = 26,
     measure,
+    measureToken,
   } = opts;
   for (let size = max; size > min; size--) {
-    const lines = lineCount(text, size, maxWidth, measure);
+    const lines = lineCount(text, size, maxWidth, measure, measureToken);
     if (lines === null) continue;
     if (lines <= maxLines && lines * size * HEADLINE_LINE_HEIGHT <= maxHeight)
       return size;
@@ -428,6 +412,7 @@ export function fitBadgeFontSize(
   badges: string[],
   maxWidth: number,
   measure: MeasureChar = charAdvance,
+  measureToken?: MeasureToken,
 ): number {
   for (let size = 20; size >= 13; size--) {
     let rows = 1;
@@ -435,7 +420,8 @@ export function fitBadgeFontSize(
     let fits = true;
     for (const badge of badges) {
       // Le moteur compte la marge de chaque badge dans la largeur de la rangée.
-      const w = tokenWidth(badge, measure) * size + BADGE_CHROME_X + BADGE_GAP;
+      const w =
+        tokenWidth(badge, measure, measureToken) * size + BADGE_CHROME_X + BADGE_GAP;
       if (w > maxWidth) {
         fits = false;
         break;

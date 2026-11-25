@@ -18,6 +18,11 @@ import {
   loadFonts,
   loadScriptFonts,
 } from "@/lib/ai/generation/screenshot/fonts";
+import { shapedWords } from "@/lib/ai/generation/screenshot/render";
+import {
+  createShaper,
+  needsShaping,
+} from "@/lib/ai/generation/screenshot/shaping";
 import { measurerFor } from "@/lib/aso/font-metrics";
 import { saveFile } from "@/lib/storage";
 import {
@@ -64,30 +69,53 @@ export async function renderFeatureGraphic(opts: {
 }): Promise<Buffer> {
   const { template, texts, artDataUrl, locale } = opts;
   const allText = [texts.headline, ...texts.badges].join(" ");
-  const [fonts, script] = await Promise.all([
+  // Polices de script dans les graisses du rendu: Bold pour le titre, SemiBold
+  // pour les badges (identiques au Regular pour les écritures dessinées par
+  // satori, cf. WEIGHTED_SCRIPTS dans fonts.ts).
+  const [fonts, script, badgeScript] = await Promise.all([
     loadFonts(),
-    loadScriptFonts(allText, locale),
+    loadScriptFonts(allText, locale, "bold"),
+    loadScriptFonts(allText, locale, "semibold"),
   ]);
-  if (script.missing.length > 0) {
+  const missing = [...new Set([...script.missing, ...badgeScript.missing])];
+  if (missing.length > 0) {
     throw new Error(
-      `Script font unavailable (${script.missing.join(", ")}): the banner text would render as empty boxes.`,
+      `Script font unavailable (${missing.join(", ")}): the banner text would render as empty boxes.`,
     );
   }
 
   const rtl = isRtlLocale(locale);
+  // satori ne compose pas les écritures indiennes: HarfBuzz s'en charge (cf.
+  // shaping.ts). Même pile de polices que satori, par graisse utilisée.
+  const shaped = !rtl && needsShaping(allText);
+  const scriptStack = script.fonts.map((f) => f.data);
+  const badgeScriptStack = badgeScript.fonts.map((f) => f.data);
+  const [headlineShaper, badgeShaper] = shaped
+    ? await Promise.all([
+        createShaper([fonts.bold, ...scriptStack]),
+        createShaper([fonts.semibold, ...badgeScriptStack]),
+      ])
+    : [null, null];
   const column = textColumnBox(template);
   const colWidth = column.width;
   const fitWidth = Math.floor(colWidth * WIDTH_SAFETY);
   // Même ordre de repli que satori: Poppins de la graisse utilisée, puis script.
-  const scriptData = script.fonts.map((f) => f.data);
-  const measureHeadline = measurerFor([fonts.bold, ...scriptData], charAdvance);
+  const measureHeadline = measurerFor(
+    [fonts.bold, ...scriptStack],
+    charAdvance,
+  );
   const measureBadge = measurerFor(
-    [fonts.semibold, ...scriptData],
+    [fonts.semibold, ...badgeScriptStack],
     charAdvance,
   );
   const badgeSize =
     texts.badges.length > 0
-      ? fitBadgeFontSize(texts.badges, fitWidth, measureBadge)
+      ? fitBadgeFontSize(
+          texts.badges,
+          fitWidth,
+          measureBadge,
+          badgeShaper?.measure,
+        )
       : 0;
   // Réserve verticale des badges: au plus deux rangées (fitBadgeFontSize).
   const badgeReserve =
@@ -98,6 +126,7 @@ export async function renderFeatureGraphic(opts: {
         maxWidth: fitWidth,
         maxHeight: column.height - badgeReserve,
         measure: measureHeadline,
+        measureToken: headlineShaper?.measure,
       })
     : 0;
 
@@ -164,20 +193,37 @@ export async function renderFeatureGraphic(opts: {
                     flexWrap: "wrap" as const,
                   }
                 : {}),
+              ...(headlineShaper
+                ? {
+                    flexWrap: "wrap" as const,
+                    // Même espace que la simulation de fitHeadlineFontSize.
+                    columnGap: measureHeadline(" ") * headlineSize,
+                  }
+                : {}),
             }}
           >
-            {rtl
-              ? rtlTokens(texts.headline).map((token, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      marginRight: i > 0 ? Math.round(headlineSize * 0.24) : 0,
-                    }}
-                  >
-                    {token}
-                  </span>
-                ))
-              : texts.headline}
+            {headlineShaper
+              ? shapedWords(headlineShaper, texts.headline, {
+                  fontSize: headlineSize,
+                  lineHeight: HEADLINE_LINE_HEIGHT,
+                  color: template.textColor,
+                  shadow: light
+                    ? { dy: 2, blur: 14, color: "rgba(0,0,0,0.25)" }
+                    : undefined,
+                })
+              : rtl
+                ? rtlTokens(texts.headline).map((token, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        marginRight:
+                          i > 0 ? Math.round(headlineSize * 0.24) : 0,
+                      }}
+                    >
+                      {token}
+                    </span>
+                  ))
+                : texts.headline}
           </div>
         ) : null}
         {texts.badges.length > 0 ? (
@@ -211,20 +257,30 @@ export async function renderFeatureGraphic(opts: {
                     ? "1.5px solid rgba(255,255,255,0.38)"
                     : "1.5px solid rgba(0,0,0,0.18)",
                   ...(rtl ? { flexDirection: "row-reverse" as const } : {}),
+                  ...(badgeShaper
+                    ? { columnGap: badgeShaper.spaceAdvance * badgeSize }
+                    : {}),
                 }}
               >
-                {rtl
-                  ? rtlTokens(badge).map((token, j) => (
-                      <span
-                        key={j}
-                        style={{
-                          marginRight: j > 0 ? Math.round(badgeSize * 0.28) : 0,
-                        }}
-                      >
-                        {token}
-                      </span>
-                    ))
-                  : badge}
+                {badgeShaper
+                  ? shapedWords(badgeShaper, badge, {
+                      fontSize: badgeSize,
+                      lineHeight: "normal",
+                      color: template.textColor,
+                    })
+                  : rtl
+                    ? rtlTokens(badge).map((token, j) => (
+                        <span
+                          key={j}
+                          style={{
+                            marginRight:
+                              j > 0 ? Math.round(badgeSize * 0.28) : 0,
+                          }}
+                        >
+                          {token}
+                        </span>
+                      ))
+                    : badge}
               </div>
             ))}
           </div>

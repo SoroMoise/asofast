@@ -31,8 +31,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   // sharp (libvips) and @resvg/resvg-js (napi) are native modules. Bundling them
   // breaks the binary resolution; keep them external so file tracing ships the
-  // platform-specific package instead.
-  serverExternalPackages: ["sharp", "@resvg/resvg-js", "better-sqlite3"],
+  // platform-specific package instead. harfbuzzjs locates its .wasm next to its
+  // own module (`new URL("harfbuzz.wasm", import.meta.url)`): bundled, that URL
+  // would point inside .next and the file would be missing.
+  serverExternalPackages: ["sharp", "@resvg/resvg-js", "better-sqlite3", "harfbuzzjs"],
   // Pin the workspace root to this project (a parent-directory lockfile exists),
   // so output file tracing resolves correctly.
   outputFileTracingRoot: import.meta.dirname,
