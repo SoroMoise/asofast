@@ -193,17 +193,17 @@ export async function loadFonts(): Promise<LoadedFonts> {
  * @vercel/og avale l'erreur: la caption part alors en carres vides sans qu'aucune
  * erreur ne remonte. On fournit donc explicitement la bonne police.
  *
- * LIMITE DU MOTEUR, a connaitre avant de toucher a cette table. next/og n'embarque
+ * LIMITE DU MOTEUR, a connaitre avant de toucher a cette table. satori n'embarque
  * PAS fontkit mais opentype.js, qui n'a ni shaper indien ni Universal Shaping
- * Engine. Il mappe codepoint par codepoint. Les ecritures brahmiques (devanagari,
- * bengali, gujarati, gurmukhi, tamoul, telougou, kannada, malayalam, singhalais,
- * khmer, lao, birman) ne sont donc PAS composees correctement: une voyelle
- * pre-base reste apres sa consonne (दिन rendu दनि) et les matras isolees sortent
- * avec leur cercle pointille. Aucune police ne repare ca. Les polices ci-dessous
- * suppriment le repli reseau et les carres vides, mais le texte de ces ecritures
- * reste mal compose tant qu'on ne pre-shape pas (harfbuzz) en amont.
- * Rendent correctement: latin, cyrillique, grec, hebreu, arabe/persan/ourdou
- * (opentype.js a un module bidi + arabe), thai, armenien, georgien, ethiopien, CJK.
+ * Engine. Il mappe codepoint par codepoint: les ecritures brahmiques (devanagari,
+ * bengali, gujarati, gurmukhi, odia, tamoul, telougou, kannada, malayalam,
+ * singhalais) et lao, khmer, birman sortiraient mal composees (दिन rendu दनि).
+ * Ces ecritures ne passent donc PAS par le texte satori: shaping.ts les compose
+ * avec HarfBuzz et les pose en images. Les polices ci-dessous alimentent les deux
+ * chemins (texte satori et HarfBuzz).
+ * Le texte satori rend correctement: latin, cyrillique, grec, hebreu, arabe/
+ * persan/ourdou (opentype.js a un module bidi + arabe), thai, armenien, georgien,
+ * ethiopien, CJK.
  *
  * Deux pieges verifies empiriquement (rendu reel via next/og, reseau coupe,
  * plusieurs captions par ecriture):
@@ -213,8 +213,7 @@ export async function loadFonts(): Promise<LoadedFonts> {
  *     (Sans, Naskh, Kufi), Amiri, Harmattan, Lateef et Scheherazade le portent et
  *     font echouer le rendu. Vazirmatn ne l'a pas, couvre l'arabe, le persan et
  *     l'ourdou, et rend les trois sans repli reseau. Le meme lookup dans une
- *     police indienne est INOFFENSIF (jamais applique): on garde donc les Noto,
- *     implementation de reference, qui seront correctes le jour du pre-shaping.
+ *     police indienne est INOFFENSIF: ces polices sont composees par HarfBuzz.
  *
  *  2. opentype.js throw sur les polices VARIABLES (`Famille[wght].ttf`), avec un
  *     `Cannot read properties of undefined`. Ne pointer que vers des instances
@@ -236,13 +235,12 @@ const SCRIPT_FONT_URLS = {
   thai: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansThai/hinted/ttf/NotoSansThai-Regular.ttf",
 
   // Brahmiques. Poppins couvre le devanagari (glyphes presents), les autres non.
-  // ATTENTION: fournir la police supprime les carres vides et le repli reseau,
-  // mais opentype.js ne les compose pas (cf. LIMITE DU MOTEUR ci-dessus). On
-  // choisit donc les Noto, seule famille qui couvre toutes ces ecritures avec un
-  // GSUB complet: elles seront correctes des qu'un vrai shaper les alimentera.
+  // Composees par HarfBuzz (cf. LIMITE DU MOTEUR ci-dessus): les Noto sont la
+  // seule famille qui couvre toutes ces ecritures avec un GSUB/GPOS complet.
   bengali: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansBengali/hinted/ttf/NotoSansBengali-Regular.ttf",
   gujarati: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansGujarati/hinted/ttf/NotoSansGujarati-Regular.ttf",
   gurmukhi: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansGurmukhi/hinted/ttf/NotoSansGurmukhi-Regular.ttf",
+  oriya: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansOriya/hinted/ttf/NotoSansOriya-Regular.ttf",
   tamil: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansTamil/hinted/ttf/NotoSansTamil-Regular.ttf",
   telugu: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansTelugu/hinted/ttf/NotoSansTelugu-Regular.ttf",
   kannada: "https://cdn.jsdelivr.net/gh/notofonts/notofonts.github.io/fonts/NotoSansKannada/hinted/ttf/NotoSansKannada-Regular.ttf",
@@ -280,6 +278,7 @@ const FONT_META: Record<FontKey, { name: string; url: string }> = {
   bengali: { name: "NotoSansBengali", url: SCRIPT_FONT_URLS.bengali },
   gujarati: { name: "NotoSansGujarati", url: SCRIPT_FONT_URLS.gujarati },
   gurmukhi: { name: "NotoSansGurmukhi", url: SCRIPT_FONT_URLS.gurmukhi },
+  oriya: { name: "NotoSansOriya", url: SCRIPT_FONT_URLS.oriya },
   tamil: { name: "NotoSansTamil", url: SCRIPT_FONT_URLS.tamil },
   telugu: { name: "NotoSansTelugu", url: SCRIPT_FONT_URLS.telugu },
   kannada: { name: "NotoSansKannada", url: SCRIPT_FONT_URLS.kannada },
@@ -311,6 +310,7 @@ const SCRIPT_RANGES: { key: FontKey; re: RegExp }[] = [
   { key: "bengali", re: /[ঀ-৿]/ },
   { key: "gurmukhi", re: /[਀-੿]/ },
   { key: "gujarati", re: /[઀-૿]/ },
+  { key: "oriya", re: /[\u0B00-\u0B7F]/ },
   { key: "tamil", re: /[஀-௿]/ },
   { key: "telugu", re: /[ఀ-౿]/ },
   { key: "kannada", re: /[ಀ-೿]/ },
@@ -404,7 +404,8 @@ const LOCALE_SCRIPT: Record<string, FontKey> = {
   he: "hebrew", iw: "hebrew", // `iw` est l'ancien code ISO de l'hebreu, encore emis.
   th: "thai",
 
-  bn: "bengali", gu: "gujarati", pa: "gurmukhi", ta: "tamil", te: "telugu",
+  // L'assamais s'ecrit en alphabet bengali.
+  bn: "bengali", as: "bengali", gu: "gujarati", pa: "gurmukhi", or: "oriya", ta: "tamil", te: "telugu",
   kn: "kannada", ml: "malayalam", si: "sinhala", lo: "lao", km: "khmer", my: "myanmar",
 
   hy: "armenian", ka: "georgian", am: "ethiopic", ti: "ethiopic",

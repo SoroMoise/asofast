@@ -29,7 +29,6 @@ import {
   generateLocaleFeatureGraphic,
   hasLocaleFeatureGraphic,
   isFeatureGraphicConfigured,
-  supportsLocalizedFeatureGraphic,
 } from "@/lib/aso/feature-graphic";
 import { syncStoreMetadata } from "@/lib/aso/store-sync";
 import { translateWhatsNew } from "@/lib/aso/translate";
@@ -730,15 +729,10 @@ export async function generateProjectScreenshots(input: {
         });
 
         // Bannière localisée (Play Store), si le modèle et l'illustration sont
-        // configurés, que l'écriture de la langue est prise en charge et qu'elle
-        // n'existe pas encore: une bannière existante (peut-être éditée à la
-        // main) se gère depuis la carte Feature graphic. Non bloquant: une
-        // bannière en échec se relance depuis cette carte.
-        if (
-          bannerConfigured &&
-          supportsLocalizedFeatureGraphic(locale) &&
-          !hasLocaleFeatureGraphic(project.id, locale)
-        ) {
+        // configurés et qu'elle n'existe pas encore: une bannière existante
+        // (peut-être éditée à la main) se gère depuis la carte Feature graphic.
+        // Non bloquant: une bannière en échec se relance depuis cette carte.
+        if (bannerConfigured && !hasLocaleFeatureGraphic(project.id, locale)) {
           try {
             await generateLocaleFeatureGraphic({
               projectId: project.id,

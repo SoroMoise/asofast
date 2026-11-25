@@ -15,7 +15,6 @@ import {
   sanitizeFeatureGraphicTemplate,
   sanitizeFeatureGraphicTexts,
   sanitizeStoredFeatureGraphic,
-  supportsLocalizedFeatureGraphic,
   templateHasText,
   truncateAtWord,
 } from "./feature-graphic-layout";
@@ -136,13 +135,18 @@ describe("stored banner metadata", () => {
 });
 
 describe("layout helpers", () => {
-  it("skips languages whose script the renderer cannot shape", () => {
-    for (const l of ["hi", "hi-IN", "bn-BD", "ta-IN", "km-KH", "my-MM", "si-LK"]) {
-      expect(supportsLocalizedFeatureGraphic(l)).toBe(false);
-    }
-    for (const l of ["en-US", "fr-FR", "ar", "iw-IL", "ja-JP", "th", "zh-CN"]) {
-      expect(supportsLocalizedFeatureGraphic(l)).toBe(true);
-    }
+  it("uses a whole-word measure when given one (shaped scripts)", () => {
+    // Un conjoint vaut moins que la somme de ses lettres: la mesure par mot
+    // (HarfBuzz) doit remplacer la somme caractère par caractère.
+    const perChar = () => 1;
+    const word = (token: string) => (token === "क्ष" ? 0.6 : 1);
+    expect(lineCount("क्ष क्ष", 100, 250, perChar)).toBeNull();
+    expect(lineCount("क्ष क्ष", 100, 250, perChar, word)).toBe(1);
+    expect(fitBadgeFontSize(["क्ष"], 60, perChar)).toBe(13);
+    expect(fitBadgeFontSize(["क्ष"], 60, perChar, word)).toBe(20);
+    expect(
+      fitHeadlineFontSize({ text: "क्ष", maxWidth: 30, maxHeight: 300, measure: perChar, measureToken: word }),
+    ).toBeGreaterThan(fitHeadlineFontSize({ text: "क्ष", maxWidth: 30, maxHeight: 300, measure: perChar }));
   });
 
   it("detects RTL languages from any locale form", () => {

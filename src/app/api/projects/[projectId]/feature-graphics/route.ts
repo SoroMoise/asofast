@@ -16,7 +16,6 @@ import {
   sanitizeFeatureGraphicTexts,
   saveFeatureGraphicTemplate,
   saveLocaleFeatureGraphic,
-  supportsLocalizedFeatureGraphic,
   type ListingHeadlineTexts,
   type LocaleFeatureGraphic,
 } from "@/lib/aso/feature-graphic";
@@ -90,7 +89,6 @@ export async function GET(_request: Request, { params }: Params): Promise<Respon
         : null,
       manual: status.stored?.manual ?? false,
       stale: status.stale,
-      supported: supportsLocalizedFeatureGraphic(locale),
     };
   });
   return Response.json({
@@ -124,7 +122,6 @@ export async function PUT(request: Request, { params }: Params): Promise<Respons
  * body: { locales?: string[], onlyMissing?: boolean, texts?: { headline, badges },
  *         resetManual?: boolean }
  * Rend les bannières des langues demandées (défaut: toutes les langues cibles).
- * Les langues dont l'écriture n'est pas prise en charge sont ignorées (`skipped`).
  * `texts` = édition manuelle, accepté pour UNE seule langue (aucune traduction).
  * Des textes déjà édités à la main sont conservés, sauf `resetManual: true`.
  * Traductions en parallèle, rendu séquentiel (satori bloque la boucle); une
@@ -162,16 +159,14 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
   const asked = Array.isArray(body.locales)
     ? body.locales.map(String).filter((l) => allowed.has(l))
     : [...allowed];
-  const requested = asked.filter(supportsLocalizedFeatureGraphic);
-  const skipped = asked.filter((l) => !supportsLocalizedFeatureGraphic(l));
   const manualTexts = body.texts !== undefined ? sanitizeFeatureGraphicTexts(body.texts) : undefined;
-  if (manualTexts && requested.length !== 1) {
+  if (manualTexts && asked.length !== 1) {
     return Response.json({ error: "Manual texts apply to exactly one language." }, { status: 400 });
   }
   const locales =
     body.onlyMissing === true
-      ? requested.filter((l) => !hasLocaleFeatureGraphic(project.id, l))
-      : requested;
+      ? asked.filter((l) => !hasLocaleFeatureGraphic(project.id, l))
+      : asked;
 
   const ctx = loadFeatureGraphicContext(project.id);
   const listings = listingTexts(project.id);
@@ -207,7 +202,7 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
       failed.push({ locale: r.locale, error: e instanceof Error ? e.message : "Render failed." });
     }
   }
-  return Response.json({ done, failed, skipped });
+  return Response.json({ done, failed });
 }
 
 async function preview(
@@ -221,12 +216,6 @@ async function preview(
     typeof body.locale === "string" && projectLocales(project).includes(body.locale)
       ? body.locale
       : project.source_locale;
-  if (!supportsLocalizedFeatureGraphic(locale)) {
-    return Response.json(
-      { error: "This language's script is not supported: it uses the default banner." },
-      { status: 400 }
-    );
-  }
   const ctx = loadFeatureGraphicContext(
     project.id,
     sanitizeFeatureGraphicTemplate(body.template)
