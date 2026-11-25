@@ -4,6 +4,9 @@
   "author": "Dev Affranchi",
   "homepage": "https://asofast.app",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
     "dev": "next dev",
@@ -19,7 +22,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@resvg/resvg-js": "^2.6.2",
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^13.2.0",
     "clsx": "^2.1.1",
     "google-auth-library": "^10.9.0",
     "google-play-scraper": "^10.1.3",
